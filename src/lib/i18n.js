@@ -45,7 +45,7 @@ export const STRINGS = {
     notAuthorizedTitle: "Sin acceso", notAuthorizedSub: "Tu cuenta inició sesión correctamente pero no está en la lista del equipo de Appuesta. Contacta a un administrador para que agregue tu correo.",
     signOut: "Cerrar sesión", signedInAs: "Conectado como",
     // imports
-    uploading: "Subiendo…", parsing: "Procesando archivo…", importing: "Importando filas…", assigningTiers: "Calculando niveles VIP…",
+    uploading: "Subiendo…", parsing: "Procesando archivo…", importing: "Importando filas…", assigningTiers: "Calculando niveles VIP…", snapshotting: "Guardando snapshot…",
     importSuccess: "filas importadas correctamente", importError: "Error al importar",
     dropHint: "Arrastra el archivo .xlsx aquí o haz clic para seleccionar",
     confirmDeleteNote: "¿Eliminar esta nota?",
@@ -96,7 +96,7 @@ export const STRINGS = {
     notAuthorizedTitle: "No access", notAuthorizedSub: "Your account signed in successfully but isn't on the Appuesta team list. Ask an admin to add your email.",
     signOut: "Sign out", signedInAs: "Signed in as",
     // imports
-    uploading: "Uploading…", parsing: "Parsing file…", importing: "Importing rows…", assigningTiers: "Assigning VIP tiers…",
+    uploading: "Uploading…", parsing: "Parsing file…", importing: "Importing rows…", assigningTiers: "Assigning VIP tiers…", snapshotting: "Saving snapshot…",
     importSuccess: "rows imported successfully", importError: "Import failed",
     dropHint: "Drag an .xlsx file here or click to select",
     confirmDeleteNote: "Delete this note?",
