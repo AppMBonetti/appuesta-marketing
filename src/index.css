@@ -1,0 +1,12 @@
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: #0F1115;
+  font-family: 'Inter', -apple-system, sans-serif;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #2A303B; border-radius: 8px; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+input, select, textarea, button { font-family: inherit; }
