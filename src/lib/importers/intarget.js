@@ -3,6 +3,7 @@ import { parseXlsxFile, toISOTimestamp, toNumber, toText, toIdText } from "./par
 // Normalized (trimmed, lowercased, whitespace-collapsed) InTarget export headers -> players columns
 const HEADER_MAP = {
   "id": "id",
+  "player id": "id",
   "name": "name",
   "registered at": "registered_at",
   "age": "age",
@@ -30,12 +31,20 @@ export async function parseIntargetFile(file) {
 
   const now = new Date().toISOString();
   const players = [];
+  let earliestRegistration = null;
+  let latestRegistration = null;
   for (const r of rows) {
     const id = toIdText(r.id);
     if (!id) continue;
 
     const registeredAt = toISOTimestamp(r.registered_at);
     const firstDepositDate = toISOTimestamp(r.first_deposit_date);
+    const depositCount = r.total_deposit_count != null ? Math.round(toNumber(r.total_deposit_count) ?? 0) : null;
+
+    if (registeredAt) {
+      if (!earliestRegistration || registeredAt < earliestRegistration) earliestRegistration = registeredAt;
+      if (!latestRegistration || registeredAt > latestRegistration) latestRegistration = registeredAt;
+    }
 
     const player = {
       id,
@@ -49,9 +58,10 @@ export async function parseIntargetFile(file) {
       avg_deposit_amount: toNumber(r.avg_deposit_amount),
       avg_sportsbook_bet_amount: toNumber(r.avg_sportsbook_bet_amount),
       total_deposit_amount: toNumber(r.total_deposit_amount),
-      total_deposit_count: r.total_deposit_count != null ? Math.round(toNumber(r.total_deposit_count) ?? 0) : null,
+      total_deposit_count: depositCount,
       total_ggr_sportsbook: toNumber(r.total_ggr_sportsbook),
       total_withdrawal_amount: toNumber(r.total_withdrawal_amount),
+      // is_ftd is a generated column (total_deposit_count > 0) — never write it.
       imported_at: now,
     };
 
@@ -62,5 +72,9 @@ export async function parseIntargetFile(file) {
     players.push(player);
   }
 
-  return { players, unmatchedHeaders };
+  return {
+    players,
+    unmatchedHeaders,
+    coverage: { start: earliestRegistration, end: latestRegistration },
+  };
 }

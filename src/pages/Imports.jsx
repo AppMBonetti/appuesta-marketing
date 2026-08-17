@@ -30,6 +30,17 @@ async function reconcileExternalUserIds(bets) {
   return { reconciled, orphaned };
 }
 
+// The import log stores plain dates; the parsers hand back ISO timestamps.
+function localDay(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function toLocalDay(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : localDay(d);
+}
+
 const CARD_DEFS = [
   { source: "InTarget", labelKey: "intargetCard" },
   { source: "Altenar", labelKey: "altenarCard" },
@@ -72,23 +83,32 @@ export default function Imports({ s, lang }) {
       setPhase(source, "parsing");
 
       if (source === "InTarget") {
-        const { players, unmatchedHeaders } = await parseIntargetFile(file);
+        const { players, unmatchedHeaders, coverage } = await parseIntargetFile(file);
         if (players.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
 
         setPhase(source, "importing");
         await upsertInChunks(supabase, "players", players, "id");
 
         setPhase(source, "logging");
-        const { error: logErr } = await supabase.from("data_imports").insert({ source, filename: file.name, row_count: players.length, status: "success" });
+        const { error: logErr } = await supabase.from("data_imports").insert({
+          source, filename: file.name, row_count: players.length, status: "success",
+          period_start: toLocalDay(coverage.start), period_end: toLocalDay(coverage.end),
+        });
         if (logErr) throw logErr;
 
         setPhase(source, "assigning");
         const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
         if (rpcErr) throw rpcErr;
 
+        // Players hold only current state, so each import is also recorded as a
+        // dated snapshot — that history is what deposit trends are computed from.
+        setPhase(source, "snapshotting");
+        const { error: snapErr } = await supabase.rpc("snapshot_players", { snapshot_day: localDay() });
+        if (snapErr) throw snapErr;
+
         setPhase(source, "done", { rowCount: players.length, unmatchedHeaders });
       } else {
-        const { bets, unmatchedHeaders } = await parseAltenarFile(file);
+        const { bets, unmatchedHeaders, coverage } = await parseAltenarFile(file);
         if (bets.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
 
         setPhase(source, "importing");
@@ -96,7 +116,10 @@ export default function Imports({ s, lang }) {
         await upsertInChunks(supabase, "bets", reconciled, "bet_id");
 
         setPhase(source, "logging");
-        const { error: logErr } = await supabase.from("data_imports").insert({ source, filename: file.name, row_count: bets.length, status: "success" });
+        const { error: logErr } = await supabase.from("data_imports").insert({
+          source, filename: file.name, row_count: bets.length, status: "success",
+          period_start: toLocalDay(coverage.start), period_end: toLocalDay(coverage.end),
+        });
         if (logErr) throw logErr;
 
         setPhase(source, "assigning");
@@ -125,7 +148,7 @@ export default function Imports({ s, lang }) {
         {CARD_DEFS.map(card => {
           const last = lastBySource[card.source];
           const state = cardState[card.source] || {};
-          const busy = ["parsing", "importing", "logging", "assigning"].includes(state.phase);
+          const busy = ["parsing", "importing", "logging", "assigning", "snapshotting"].includes(state.phase);
           return (
             <Panel key={card.source} style={{ flex: 1, minWidth: 280 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -144,7 +167,7 @@ export default function Imports({ s, lang }) {
 
               <input
                 type="file"
-                accept=".xlsx"
+                accept=".xlsx,.csv"
                 ref={fileInputs[card.source]}
                 style={{ display: "none" }}
                 onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleFile(card.source, f); }}

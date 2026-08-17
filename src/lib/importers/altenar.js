@@ -36,9 +36,17 @@ export async function parseAltenarFile(file) {
 
   const now = new Date().toISOString();
   const bets = [];
+  let earliestBet = null;
+  let latestBet = null;
   for (const r of rows) {
     const betId = toIdText(r.bet_id);
     if (!betId) continue;
+
+    const betDate = toISOTimestamp(r.bet_date);
+    if (betDate) {
+      if (!earliestBet || betDate < earliestBet) earliestBet = betDate;
+      if (!latestBet || betDate > latestBet) latestBet = betDate;
+    }
 
     bets.push({
       bet_id: betId,
@@ -49,7 +57,7 @@ export async function parseAltenarFile(file) {
       category: toText(r.category),
       champ_name: toText(r.champ_name),
       event_name: toText(r.event_name),
-      bet_date: toISOTimestamp(r.bet_date),
+      bet_date: betDate,
       event_date: toISOTimestamp(r.event_date),
       settlement_date: toISOTimestamp(r.settlement_date),
       bet_type: toText(r.bet_type),
@@ -62,5 +70,9 @@ export async function parseAltenarFile(file) {
     });
   }
 
-  return { bets, unmatchedHeaders };
+  return {
+    bets,
+    unmatchedHeaders,
+    coverage: { start: earliestBet, end: latestBet },
+  };
 }
