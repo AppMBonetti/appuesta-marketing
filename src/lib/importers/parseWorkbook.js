@@ -73,6 +73,11 @@ export function toNumber(rawValue) {
   const lastDot = digits.lastIndexOf(".");
   const lastComma = digits.lastIndexOf(",");
 
+  // A thousands group is never written as a bare leading zero, so "0.155" and
+  // "0,155" are decimals in either locale — without this, GA4's fractional
+  // rates (0.155) would parse as 155 under the three-digit grouping rule below.
+  const leadingZero = /^0[.,]/.test(digits);
+
   let decimalSep = null;
   if (lastDot !== -1 && lastComma !== -1) {
     // Both present: whichever comes last is the decimal separator.
@@ -81,10 +86,10 @@ export function toNumber(rawValue) {
     // Only commas. A single comma with exactly 3 digits after it reads as a
     // thousands group (1,234); anything else is a decimal comma (842,38 / 12,5).
     const trailing = digits.length - lastComma - 1;
-    decimalSep = trailing === 3 && digits.indexOf(",") === lastComma ? null : ",";
+    decimalSep = !leadingZero && trailing === 3 && digits.indexOf(",") === lastComma ? null : ",";
   } else if (lastDot !== -1) {
     const trailing = digits.length - lastDot - 1;
-    decimalSep = trailing === 3 && digits.indexOf(".") === lastDot ? null : ".";
+    decimalSep = !leadingZero && trailing === 3 && digits.indexOf(".") === lastDot ? null : ".";
   }
 
   let intPart = digits;
@@ -99,6 +104,43 @@ export function toNumber(rawValue) {
   const n = parseFloat(`${intPart || "0"}${fracPart ? `.${fracPart}` : ""}`);
   if (isNaN(n)) return null;
   return negative ? -Math.abs(n) : n;
+}
+
+/**
+ * Parses a calendar date to a plain YYYY-MM-DD string. Unlike `toISOTimestamp`
+ * this never round-trips through a timezone, so a date-only cell can't shift a
+ * day when the browser runs at a negative UTC offset.
+ */
+export function toISODateOnly(rawValue) {
+  const value = unwrapCellValue(rawValue);
+  if (value == null || value === "") return null;
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
+  if (typeof value === "number") {
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    return new Date(excelEpoch + value * 86400000).toISOString().slice(0, 10);
+  }
+
+  const str = String(value).trim();
+  if (!str) return null;
+
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  // Supermetrics sometimes emits GA4 dates in the API's compact form.
+  const compact = str.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compact) return `${compact[1]}-${compact[2]}-${compact[3]}`;
+
+  const dayFirst = str.match(DAY_FIRST_RE);
+  if (dayFirst) {
+    const [, d, m, y] = dayFirst;
+    const day = Number(d), month = Number(m);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${y}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  const parsed = new Date(str);
+  return isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
 export function toText(rawValue) {

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { Radio, Plus } from "lucide-react";
+import { Radio, Plus, Users, MousePointerClick, Activity, Target } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C, LINE_COLORS } from "../lib/theme";
-import { getPeriodRange } from "../lib/period";
-import { SectionHeading, Panel, PeriodBar, Spinner, fmtDOP, deltaOf, EmptyState } from "../components/ui";
+import { getPeriodRange, monthOptions, currentBudgetMonth, formatMonth } from "../lib/period";
+import { aggregateByChannel, pivotSessionsByDate } from "../lib/metrics";
+import { SectionHeading, Panel, PeriodBar, Spinner, KpiCard, fmtDOP, deltaOf, EmptyState } from "../components/ui";
 
 const METRIC_KEYS = ["spend", "impressions", "clicks", "ctr", "cpc", "cpa", "traffic", "registrations", "deposits", "ftds"];
 const FIELD_TO_COLUMN = {
@@ -32,6 +33,11 @@ function pivotByDate(log, metric) {
   });
 }
 
+function fmtPct(n) {
+  if (n == null) return "—";
+  return `${(n * 100).toFixed(1)}%`;
+}
+
 export default function Acquisition({ s, lang }) {
   const [period, setPeriod] = useState("week");
   const [customStart, setCustomStart] = useState(new Date().toISOString().slice(0, 10));
@@ -41,25 +47,31 @@ export default function Acquisition({ s, lang }) {
   const [error, setError] = useState(null);
   const [channelBudgets, setChannelBudgets] = useState([]);
   const [reportsLog, setReportsLog] = useState([]);
-  const [ga4Current, setGa4Current] = useState([]);
-  const [ga4Previous, setGa4Previous] = useState([]);
+  const [ga4Rows, setGa4Rows] = useState([]);
+  const [ga4PrevRows, setGa4PrevRows] = useState([]);
+
+  const [budgetMonth, setBudgetMonth] = useState(currentBudgetMonth());
+  const [monthBudgets, setMonthBudgets] = useState([]);
+  const [savingBudget, setSavingBudget] = useState(false);
 
   const [reportForm, setReportForm] = useState(emptyReportForm(""));
   const [submitting, setSubmitting] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState("cpa");
   const [chartView, setChartView] = useState("single");
+  const [ga4View, setGa4View] = useState("stacked");
 
   async function loadAll() {
     setLoading(true);
     setError(null);
     try {
       const range = getPeriodRange(period, customStart, customEnd);
+      const ga4Cols = "date, channel, sessions, active_users, engagement_rate, conversions";
       const [budgetsRes, reportsRes, ga4CurRes, ga4PrevRes] = await Promise.all([
         supabase.from("channel_budgets").select("*").order("channel"),
         supabase.from("channel_reports").select("*").order("report_date", { ascending: true }),
-        supabase.from("ga4_channel_daily").select("channel, sessions").gte("date", range.current.start).lt("date", range.current.end),
+        supabase.from("ga4_channel_daily").select(ga4Cols).gte("date", range.current.start).lt("date", range.current.end).order("date"),
         range.previous
-          ? supabase.from("ga4_channel_daily").select("channel, sessions").gte("date", range.previous.start).lt("date", range.previous.end)
+          ? supabase.from("ga4_channel_daily").select(ga4Cols).gte("date", range.previous.start).lt("date", range.previous.end)
           : Promise.resolve({ data: [], error: null }),
       ]);
       if (budgetsRes.error) throw budgetsRes.error;
@@ -74,14 +86,8 @@ export default function Acquisition({ s, lang }) {
         cpc: r.cpc_dop, cpa: r.cpa_dop, traffic: r.site_traffic,
         registrations: r.registrations, deposits: r.deposits, ftds: r.ftds,
       })));
-
-      const aggBy = (rows) => {
-        const m = new Map();
-        for (const r of rows) m.set(r.channel, (m.get(r.channel) || 0) + (r.sessions || 0));
-        return [...m.entries()].map(([channel, sessions]) => ({ channel, sessions })).sort((a, b) => b.sessions - a.sessions);
-      };
-      setGa4Current(aggBy(ga4CurRes.data || []));
-      setGa4Previous(aggBy(ga4PrevRes.data || []));
+      setGa4Rows(ga4CurRes.data || []);
+      setGa4PrevRows(ga4PrevRes.data || []);
 
       if ((budgetsRes.data || []).length && !reportForm.channel) {
         setReportForm(emptyReportForm(budgetsRes.data[0].channel));
@@ -95,10 +101,45 @@ export default function Acquisition({ s, lang }) {
 
   useEffect(() => { loadAll(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [period, customStart, customEnd]);
 
+  // Budgets are keyed by (month, platform), so the month filter reloads on its own.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data, error: budgetErr } = await supabase
+        .from("budgets").select("*").eq("month", budgetMonth);
+      if (!active) return;
+      if (budgetErr) { setError(budgetErr.message); return; }
+      setMonthBudgets(data || []);
+    })();
+    return () => { active = false; };
+  }, [budgetMonth]);
+
   async function updateChannelBudget(channel, field, value) {
     setChannelBudgets(prev => prev.map(c => c.channel === channel ? { ...c, [field]: value } : c));
-    const { error } = await supabase.from("channel_budgets").update({ [field]: value }).eq("channel", channel);
-    if (error) setError(error.message);
+    const { error: err } = await supabase.from("channel_budgets").update({ [field]: value }).eq("channel", channel);
+    if (err) setError(err.message);
+  }
+
+  async function updateMonthBudget(platform, field, value) {
+    const numeric = value === "" ? 0 : Number(value);
+    setMonthBudgets(prev => {
+      const existing = prev.find(b => b.platform === platform);
+      if (existing) return prev.map(b => b.platform === platform ? { ...b, [field]: numeric } : b);
+      return [...prev, { month: budgetMonth, platform, planned_budget_dop: 0, actual_spend_dop: 0, [field]: numeric }];
+    });
+    setSavingBudget(true);
+    const current = monthBudgets.find(b => b.platform === platform);
+    const payload = {
+      month: budgetMonth,
+      platform,
+      planned_budget_dop: current?.planned_budget_dop ?? 0,
+      actual_spend_dop: current?.actual_spend_dop ?? 0,
+      [field]: numeric,
+      updated_at: new Date().toISOString(),
+    };
+    const { error: err } = await supabase.from("budgets").upsert(payload, { onConflict: "month,platform" });
+    setSavingBudget(false);
+    if (err) setError(err.message);
   }
 
   async function submitReport() {
@@ -109,20 +150,49 @@ export default function Acquisition({ s, lang }) {
     const toNullableNum = v => (v === "" ? null : Number(v));
     const payload = { report_date: reportForm.date, channel: reportForm.channel, source: "manual" };
     METRIC_KEYS.forEach(k => { payload[FIELD_TO_COLUMN[k]] = toNullableNum(reportForm[k]); });
-    const { error } = await supabase.from("channel_reports").insert(payload);
+    const { error: err } = await supabase.from("channel_reports").insert(payload);
     setSubmitting(false);
-    if (error) { setError(error.message); return; }
+    if (err) { setError(err.message); return; }
     setReportForm(emptyReportForm(reportForm.channel));
     loadAll();
   }
 
   const periodBarProps = { s, period, setPeriod, customStart, setCustomStart, customEnd, setCustomEnd };
   const channelNames = channelBudgets.map(c => c.channel);
-  const maxSessions = Math.max(1, ...ga4Current.map(c => c.sessions));
+
+  const ga4Current = aggregateByChannel(ga4Rows);
+  const ga4Previous = aggregateByChannel(ga4PrevRows);
+  const sessionsSeries = pivotSessionsByDate(ga4Rows);
+  const ga4Channels = ga4Current.map(c => c.channel);
+  const totalSessions = ga4Current.reduce((sum, c) => sum + c.sessions, 0);
+  const totalUsers = ga4Current.reduce((sum, c) => sum + c.active_users, 0);
+  const totalConversions = ga4Current.reduce((sum, c) => sum + c.conversions, 0);
+  const weightedEngagement = totalSessions > 0
+    ? ga4Current.reduce((sum, c) => sum + c.engagement_rate * c.sessions, 0) / totalSessions
+    : null;
+  const prevSessions = ga4Previous.reduce((sum, c) => sum + c.sessions, 0);
+  const sessionsDelta = deltaOf(totalSessions, prevSessions);
+
+  const months = monthOptions();
+  const budgetRows = channelNames.map(channel => {
+    const row = monthBudgets.find(b => b.platform === channel);
+    return {
+      channel,
+      planned: Number(row?.planned_budget_dop ?? 0),
+      actual: Number(row?.actual_spend_dop ?? 0),
+    };
+  });
+  const budgetTotals = budgetRows.reduce(
+    (acc, r) => ({ planned: acc.planned + r.planned, actual: acc.actual + r.actual }),
+    { planned: 0, actual: 0 }
+  );
 
   if (loading && !channelBudgets.length) {
     return <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spinner size={22} /></div>;
   }
+
+  const inputStyle = { background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "7px 10px", width: 130, fontSize: 13 };
+  const thStyle = { padding: "12px 16px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 12 };
 
   return (
     <>
@@ -130,44 +200,120 @@ export default function Acquisition({ s, lang }) {
       <PeriodBar {...periodBarProps} />
       {error && <Panel style={{ color: C.negative, marginBottom: 16 }}>{error}</Panel>}
 
-      {ga4Current.length === 0 ? <div style={{ marginBottom: 20 }}><EmptyState s={s} /></div> : (
-        <Panel style={{ marginBottom: 20 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {ga4Current.map((c) => {
-              const prevVal = ga4Previous.find(p => p.channel === c.channel)?.sessions ?? 0;
-              const d = deltaOf(c.sessions, prevVal);
-              return (
-                <div key={c.channel} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 120, fontSize: 12.5, color: C.inkDim }}>{c.channel}</div>
-                  <div style={{ flex: 1, background: "#1D222B", borderRadius: 7, height: 18 }}><div style={{ width: `${(c.sessions / maxSessions) * 100}%`, height: "100%", borderRadius: 7, background: C.accent }} /></div>
-                  <div style={{ width: 55, textAlign: "right", fontWeight: 600, fontSize: 13 }}>{c.sessions}</div>
-                  <div style={{ width: 60, textAlign: "right", fontSize: 11.5, color: d?.positive ? C.positive : C.negative }}>{d?.label ?? "—"}</div>
-                </div>
-              );
-            })}
+      <SectionHeading title={s.trafficByChannel} subtitle={s.trafficByChannelSub} />
+      {totalSessions === 0 ? <div style={{ marginBottom: 20 }}><EmptyState s={s} /></div> : (
+        <>
+          <div style={{ display: "flex", gap: 14, marginBottom: 16, flexWrap: "wrap" }}>
+            <KpiCard icon={Users} label={s.ga4Kpi.sessions} value={totalSessions.toLocaleString()} delta={sessionsDelta?.label} deltaGood={sessionsDelta?.positive} />
+            <KpiCard icon={MousePointerClick} label={s.ga4Kpi.users} value={totalUsers.toLocaleString()} />
+            <KpiCard icon={Activity} label={s.ga4Kpi.engagement} value={fmtPct(weightedEngagement)} />
+            <KpiCard icon={Target} label={s.ga4Kpi.conversions} value={totalConversions.toLocaleString()} />
           </div>
-        </Panel>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
+              {[["stacked", s.ga4Stacked], ["total", s.ga4Total]].map(([v, label]) => (
+                <button key={v} onClick={() => setGa4View(v)} style={{ padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, background: ga4View === v ? C.accent : "transparent", color: ga4View === v ? "#fff" : C.inkDim }}>{label}</button>
+              ))}
+            </div>
+          </div>
+
+          <Panel style={{ marginBottom: 16 }}>
+            <ResponsiveContainer width="100%" height={230}>
+              <AreaChart data={sessionsSeries}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.panelBorder} vertical={false} />
+                <XAxis dataKey="date" stroke={C.inkFaint} fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke={C.inkFaint} fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 8, fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                {ga4View === "stacked"
+                  ? ga4Channels.map((ch, i) => (
+                    <Area key={ch} type="monotone" dataKey={ch} stackId="sessions" stroke={LINE_COLORS[i % LINE_COLORS.length]} fill={LINE_COLORS[i % LINE_COLORS.length]} fillOpacity={0.28} strokeWidth={1.5} />
+                  ))
+                  : (
+                    <Area type="monotone" dataKey={d => ga4Channels.reduce((sum, ch) => sum + (d[ch] || 0), 0)} name={s.ga4Kpi.sessions} stroke={C.accent} fill={C.accent} fillOpacity={0.22} strokeWidth={2} />
+                  )}
+              </AreaChart>
+            </ResponsiveContainer>
+          </Panel>
+
+          <Panel style={{ padding: 4, overflow: "auto", marginBottom: 16 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead><tr>{[s.ga4Cols.channel, s.ga4Cols.sessions, s.ga4Cols.share, s.ga4Cols.users, s.ga4Cols.engagement, s.ga4Cols.delta].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+              <tbody>
+                {ga4Current.map((c, i) => {
+                  const prevVal = ga4Previous.find(p => p.channel === c.channel)?.sessions ?? 0;
+                  const d = deltaOf(c.sessions, prevVal);
+                  const share = totalSessions > 0 ? (c.sessions / totalSessions) * 100 : 0;
+                  return (
+                    <tr key={c.channel}>
+                      <td style={{ padding: "10px 16px" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ width: 9, height: 9, borderRadius: 99, background: LINE_COLORS[i % LINE_COLORS.length], flexShrink: 0 }} />
+                          {c.channel}
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 16px", fontWeight: 600 }}>{c.sessions.toLocaleString()}</td>
+                      <td style={{ padding: "10px 16px", color: C.inkDim, minWidth: 130 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ flex: 1, background: "#1D222B", borderRadius: 6, height: 7, minWidth: 50 }}>
+                            <span style={{ display: "block", width: `${share}%`, height: "100%", borderRadius: 6, background: LINE_COLORS[i % LINE_COLORS.length] }} />
+                          </span>
+                          {share.toFixed(1)}%
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 16px", color: C.inkDim }}>{c.active_users.toLocaleString()}</td>
+                      <td style={{ padding: "10px 16px", color: C.inkDim }}>{fmtPct(c.engagement_rate)}</td>
+                      <td style={{ padding: "10px 16px", fontSize: 12, color: d ? (d.positive ? C.positive : C.negative) : C.inkFaint }}>{d?.label ?? "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Panel>
+        </>
       )}
       <div style={{ background: "#2C1B1A", border: `1px solid ${C.negative}40`, borderRadius: 12, padding: "12px 16px", fontSize: 12.5, color: C.negative, marginBottom: 26 }}>{s.acqNote}</div>
 
       <SectionHeading title={s.budgetByChannel} subtitle={s.budgetByChannelSub} />
-      <Panel style={{ padding: 4, overflow: "hidden", marginBottom: 26 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12.5, color: C.inkDim }}>{s.budgetMonth}</span>
+        <select value={budgetMonth} onChange={e => setBudgetMonth(e.target.value)} style={{ background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "7px 10px", fontSize: 12.5, textTransform: "capitalize" }}>
+          {months.map(m => <option key={m} value={m}>{formatMonth(m, lang)}</option>)}
+        </select>
+        {savingBudget && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: C.inkFaint }}><Spinner /> {s.budgetSaving}</span>}
+      </div>
+      <Panel style={{ padding: 4, overflow: "auto", marginBottom: 26 }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead><tr>{[s.channelCol, s.liveCol, s.budgetCol].map(h => <th key={h} style={{ padding: "12px 16px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 12 }}>{h}</th>)}</tr></thead>
+          <thead><tr>{[s.channelCol, s.liveCol, s.budgetPlanned, s.budgetActual, s.budgetRemaining].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
           <tbody>
-            {channelBudgets.map(c => (
-              <tr key={c.channel}>
-                <td style={{ padding: "10px 16px", fontWeight: 500 }}>{c.channel}</td>
-                <td style={{ padding: "10px 16px" }}>
-                  <button onClick={() => updateChannelBudget(c.channel, "live", !c.live)} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "none", background: "transparent", cursor: "pointer", color: c.live ? C.positive : C.inkFaint, fontSize: 12 }}>
-                    <Radio size={13} fill={c.live ? C.positive : "none"} />{c.live ? (lang === "es" ? "Activo" : "Live") : (lang === "es" ? "Inactivo" : "Off")}
-                  </button>
-                </td>
-                <td style={{ padding: "8px 16px" }}>
-                  <input type="number" defaultValue={c.monthly_budget} onBlur={e => updateChannelBudget(c.channel, "monthly_budget", e.target.value === "" ? 0 : Number(e.target.value))} style={{ background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "7px 10px", width: 130, fontSize: 13 }} />
-                </td>
-              </tr>
-            ))}
+            {budgetRows.map(row => {
+              const channel = channelBudgets.find(c => c.channel === row.channel);
+              return (
+                <tr key={row.channel}>
+                  <td style={{ padding: "10px 16px", fontWeight: 500 }}>{row.channel}</td>
+                  <td style={{ padding: "10px 16px" }}>
+                    <button onClick={() => updateChannelBudget(row.channel, "live", !channel?.live)} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "none", background: "transparent", cursor: "pointer", color: channel?.live ? C.positive : C.inkFaint, fontSize: 12 }}>
+                      <Radio size={13} fill={channel?.live ? C.positive : "none"} />{channel?.live ? (lang === "es" ? "Activo" : "Live") : (lang === "es" ? "Inactivo" : "Off")}
+                    </button>
+                  </td>
+                  <td style={{ padding: "8px 16px" }}>
+                    <input type="number" key={`p-${budgetMonth}-${row.channel}`} defaultValue={row.planned} onBlur={e => updateMonthBudget(row.channel, "planned_budget_dop", e.target.value)} style={inputStyle} />
+                  </td>
+                  <td style={{ padding: "8px 16px" }}>
+                    <input type="number" key={`a-${budgetMonth}-${row.channel}`} defaultValue={row.actual} onBlur={e => updateMonthBudget(row.channel, "actual_spend_dop", e.target.value)} style={inputStyle} />
+                  </td>
+                  <td style={{ padding: "10px 16px", color: row.planned - row.actual < 0 ? C.negative : C.inkDim }}>{fmtDOP(row.planned - row.actual)}</td>
+                </tr>
+              );
+            })}
+            <tr style={{ borderTop: `1px solid ${C.panelBorder}` }}>
+              <td style={{ padding: "12px 16px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{s.budgetTotal}</td>
+              <td />
+              <td style={{ padding: "12px 16px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{fmtDOP(budgetTotals.planned)}</td>
+              <td style={{ padding: "12px 16px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{fmtDOP(budgetTotals.actual)}</td>
+              <td style={{ padding: "12px 16px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", color: budgetTotals.planned - budgetTotals.actual < 0 ? C.negative : C.ink }}>{fmtDOP(budgetTotals.planned - budgetTotals.actual)}</td>
+            </tr>
           </tbody>
         </table>
       </Panel>

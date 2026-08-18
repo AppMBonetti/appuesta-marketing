@@ -5,6 +5,7 @@ import { C } from "../lib/theme";
 import { SectionHeading, Panel, Spinner } from "../components/ui";
 import { parseIntargetFile } from "../lib/importers/intarget";
 import { parseAltenarFile } from "../lib/importers/altenar";
+import { parseGa4File } from "../lib/importers/ga4";
 import { upsertInChunks } from "../lib/importers/parseWorkbook";
 
 // bets.external_user_id has a FK to players.id — if a bet references a player
@@ -44,6 +45,7 @@ function toLocalDay(iso) {
 const CARD_DEFS = [
   { source: "InTarget", labelKey: "intargetCard" },
   { source: "Altenar", labelKey: "altenarCard" },
+  { source: "GA4", labelKey: "ga4Card" },
 ];
 
 export default function Imports({ s, lang }) {
@@ -51,7 +53,7 @@ export default function Imports({ s, lang }) {
   const [lastBySource, setLastBySource] = useState({});
   const [loadingLog, setLoadingLog] = useState(true);
   const [cardState, setCardState] = useState({}); // source -> { phase, error, result }
-  const fileInputs = { InTarget: useRef(null), Altenar: useRef(null) };
+  const fileInputs = { InTarget: useRef(null), Altenar: useRef(null), GA4: useRef(null) };
 
   async function loadLog() {
     setLoadingLog(true);
@@ -82,7 +84,22 @@ export default function Imports({ s, lang }) {
     try {
       setPhase(source, "parsing");
 
-      if (source === "InTarget") {
+      if (source === "GA4") {
+        const { rows, unmatchedHeaders, coverage } = await parseGa4File(file);
+        if (rows.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
+
+        setPhase(source, "importing");
+        await upsertInChunks(supabase, "ga4_channel_daily", rows, "date,channel");
+
+        setPhase(source, "logging");
+        const { error: logErr } = await supabase.from("data_imports").insert({
+          source, filename: file.name, row_count: rows.length, status: "success",
+          period_start: coverage.start, period_end: coverage.end,
+        });
+        if (logErr) throw logErr;
+
+        setPhase(source, "done", { rowCount: rows.length, unmatchedHeaders });
+      } else if (source === "InTarget") {
         const { players, unmatchedHeaders, coverage } = await parseIntargetFile(file);
         if (players.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
 
