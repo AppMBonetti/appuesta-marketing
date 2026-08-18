@@ -100,3 +100,38 @@ export function formatWeek(isoDate, lang) {
     day: "numeric", month: "short", timeZone: "UTC",
   });
 }
+
+/**
+ * The Mondays that fall inside a given month. Matches how the weekly report is
+ * laid out: a week belongs to the month its Monday falls in, so a week
+ * straddling month end is not double-counted.
+ */
+export function weeksInMonth(monthISO) {
+  const [y, m] = monthISO.split("-").map(Number);
+  const cursor = new Date(Date.UTC(y, m - 1, 1));
+  while (cursor.getUTCDay() !== 1) cursor.setUTCDate(cursor.getUTCDate() + 1);
+  const out = [];
+  while (cursor.getUTCMonth() === m - 1) {
+    out.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 7);
+  }
+  return out;
+}
+
+export function previousWeek(weekISO) {
+  const [y, m, d] = weekISO.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - 7);
+  return dt.toISOString().slice(0, 10);
+}
+
+/** "17/8 - 23/8" (es) or "8/17 - 8/23" (en) — the column header for a week. */
+export function weekRangeLabel(weekISO, lang) {
+  const [y, m, d] = weekISO.split("-").map(Number);
+  const start = new Date(Date.UTC(y, m - 1, d));
+  const end = new Date(Date.UTC(y, m - 1, d + 6));
+  const fmt = dt => (lang === "es"
+    ? `${dt.getUTCDate()}/${dt.getUTCMonth() + 1}`
+    : `${dt.getUTCMonth() + 1}/${dt.getUTCDate()}`);
+  return `${fmt(start)} - ${fmt(end)}`;
+}

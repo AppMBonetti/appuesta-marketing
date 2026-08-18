@@ -5,8 +5,9 @@ import {
 import { Radio, Plus, Users, MousePointerClick, Activity, Target } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C, LINE_COLORS } from "../lib/theme";
-import { getPeriodRange, monthOptions, currentBudgetMonth, formatMonth } from "../lib/period";
-import { aggregateByChannel, pivotSessionsByDate } from "../lib/metrics";
+import { getPeriodRange, monthOptions, currentBudgetMonth, formatMonth, weeksInMonth, previousWeek } from "../lib/period";
+import { aggregateByChannel, pivotSessionsByDate, deriveWeeklyKpis } from "../lib/metrics";
+import WeeklyKpiGrid from "../components/WeeklyKpiGrid";
 import { SectionHeading, Panel, PeriodBar, Spinner, KpiCard, fmtDOP, deltaOf, EmptyState } from "../components/ui";
 
 const METRIC_KEYS = ["spend", "impressions", "clicks", "ctr", "cpc", "cpa", "traffic", "registrations", "deposits", "ftds"];
@@ -59,6 +60,9 @@ export default function Acquisition({ s, lang }) {
   const [selectedMetric, setSelectedMetric] = useState("cpa");
   const [chartView, setChartView] = useState("single");
   const [ga4View, setGa4View] = useState("stacked");
+  const [tab, setTab] = useState("weekly");
+  const [weeklyRows, setWeeklyRows] = useState([]);
+  const [savingWeek, setSavingWeek] = useState(null);
 
   async function loadAll() {
     setLoading(true);
@@ -113,6 +117,32 @@ export default function Acquisition({ s, lang }) {
     })();
     return () => { active = false; };
   }, [budgetMonth]);
+
+  // The weekly report spans the selected month plus the week before it, so the
+  // first column still has a base to compute its week-over-week change against.
+  const reportWeeks = weeksInMonth(budgetMonth);
+
+  async function loadWeekly() {
+    if (!reportWeeks.length) return;
+    const from = previousWeek(reportWeeks[0]);
+    const to = reportWeeks[reportWeeks.length - 1];
+    const { data, error: weeklyErr } = await supabase
+      .from("weekly_kpis").select("*").gte("week_start", from).lte("week_start", to);
+    if (weeklyErr) { setError(weeklyErr.message); return; }
+    setWeeklyRows(data || []);
+  }
+
+  useEffect(() => { loadWeekly(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [budgetMonth]);
+
+  async function saveWeeklySpend(week, value) {
+    setSavingWeek(week);
+    const { error: spendErr } = await supabase
+      .from("weekly_spend")
+      .upsert({ week_start: week, spend_dop: value, updated_at: new Date().toISOString() }, { onConflict: "week_start" });
+    setSavingWeek(null);
+    if (spendErr) { setError(spendErr.message); return; }
+    loadWeekly();
+  }
 
   async function updateChannelBudget(channel, field, value) {
     setChannelBudgets(prev => prev.map(c => c.channel === channel ? { ...c, [field]: value } : c));
@@ -173,6 +203,11 @@ export default function Acquisition({ s, lang }) {
   const prevSessions = ga4Previous.reduce((sum, c) => sum + c.sessions, 0);
   const sessionsDelta = deltaOf(totalSessions, prevSessions);
 
+  const rowsByWeek = Object.fromEntries(
+    weeklyRows.map(r => [r.week_start, deriveWeeklyKpis(r)])
+  );
+  const monthSpend = reportWeeks.reduce((sum, w) => sum + (rowsByWeek[w]?.spend ?? 0), 0);
+
   const months = monthOptions();
   const budgetRows = channelNames.map(channel => {
     const row = monthBudgets.find(b => b.platform === channel);
@@ -197,8 +232,48 @@ export default function Acquisition({ s, lang }) {
   return (
     <>
       <SectionHeading title={s.acqTitle} subtitle={s.acqSub} />
-      <PeriodBar {...periodBarProps} />
+
+      <div style={{ display: "flex", marginBottom: 16, background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2, width: "fit-content" }}>
+        {[["weekly", s.wk.viewWeekly], ["channels", s.wk.viewChannels]].map(([v, label]) => (
+          <button key={v} onClick={() => setTab(v)} style={{ padding: "6px 18px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: tab === v ? C.accent : "transparent", color: tab === v ? "#fff" : C.inkDim }}>{label}</button>
+        ))}
+      </div>
+
       {error && <Panel style={{ color: C.negative, marginBottom: 16 }}>{error}</Panel>}
+
+      {tab === "weekly" ? (
+        <>
+          <SectionHeading title={s.wk.title} subtitle={s.wk.sub} />
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
+            <select value={budgetMonth} onChange={e => setBudgetMonth(e.target.value)} style={{ background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "7px 10px", fontSize: 12.5, textTransform: "capitalize" }}>
+              {monthOptions().map(m => <option key={m} value={m}>{formatMonth(m, lang)}</option>)}
+            </select>
+            <span style={{ fontSize: 12.5, color: C.inkDim }}>
+              {s.wk.goalLine}: <strong style={{ color: C.ink }}>{fmtDOP(budgetTotals.planned)}</strong>
+              {"  ·  "}{s.wk.actualLine}: <strong style={{ color: C.ink }}>{fmtDOP(monthSpend)}</strong>
+              {budgetTotals.planned > 0 && (
+                <span style={{ color: monthSpend > budgetTotals.planned ? C.negative : C.inkFaint }}>
+                  {`  ·  ${((monthSpend / budgetTotals.planned) * 100).toFixed(0)}% ${s.wk.ofGoal}`}
+                </span>
+              )}
+            </span>
+          </div>
+
+          <WeeklyKpiGrid
+            s={s}
+            lang={lang}
+            weeks={reportWeeks}
+            rowsByWeek={rowsByWeek}
+            onEditSpend={saveWeeklySpend}
+            savingWeek={savingWeek}
+          />
+
+          <p style={{ color: C.inkFaint, fontSize: 11.5, margin: "12px 0 0", maxWidth: 780, lineHeight: 1.6 }}>{s.wk.spendFallback}</p>
+          <p style={{ color: C.inkFaint, fontSize: 11.5, margin: "8px 0 26px", maxWidth: 780, lineHeight: 1.6 }}>{s.wk.pendingSources}</p>
+        </>
+      ) : (
+        <>
+      <PeriodBar {...periodBarProps} />
 
       <SectionHeading title={s.trafficByChannel} subtitle={s.trafficByChannelSub} />
       {totalSessions === 0 ? <div style={{ marginBottom: 20 }}><EmptyState s={s} /></div> : (
@@ -421,6 +496,8 @@ export default function Acquisition({ s, lang }) {
               </tbody>
             </table>
           </Panel>
+        </>
+      )}
         </>
       )}
     </>

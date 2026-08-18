@@ -11,6 +11,10 @@ const HEADER_MAP = {
   "average sportsbook bet amount": "avg_sportsbook_bet_amount",
   "email": "email",
   "first deposit date": "first_deposit_date",
+  // Needed for FTD revenue / average FTD value — total deposit amount is
+  // lifetime, so it cannot stand in for the value of the first deposit.
+  "first deposit amount": "first_deposit_amount",
+  "ftd amount": "first_deposit_amount",
   "last deposit date": "last_deposit_date",
   "last withdrawal date": "last_withdrawal_date",
   "total deposit amount": "total_deposit_amount",
@@ -56,6 +60,7 @@ export async function parseIntargetFile(file) {
       last_deposit_date: toISOTimestamp(r.last_deposit_date),
       last_withdrawal_date: toISOTimestamp(r.last_withdrawal_date),
       avg_deposit_amount: toNumber(r.avg_deposit_amount),
+      first_deposit_amount: toNumber(r.first_deposit_amount),
       avg_sportsbook_bet_amount: toNumber(r.avg_sportsbook_bet_amount),
       total_deposit_amount: toNumber(r.total_deposit_amount),
       total_deposit_count: depositCount,
