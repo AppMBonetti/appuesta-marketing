@@ -8,6 +8,14 @@ export const STRINGS = {
     trendTitle: "Registros vs. FTD",
     acqTitle: "Adquisición y canales", acqSub: "GA4 — propiedad Appuesta RD, vía Supermetrics",
     acqNote: "⚠ Conversiones GA4 aún no configuradas — mostrará 0 hasta activar eventos de conversión.",
+    coverage: {
+      title: "Cobertura de datos de apuestas", sub: "Días sin apuestas recibidas desde el inicio de operaciones",
+      allCovered: "Todos los días tienen apuestas recibidas.",
+      missingDays: "días sin datos", missingHint: "Un día sin apuestas puede significar que nadie apostó, o que ese día nunca se exportó. Pide un reporte de Altenar que cubra estas fechas.",
+      staleTitle: "Apuestas abiertas sin actualizar", staleHint: "Estas apuestas se importaron como “Abierta”. Si un reporte posterior no las vuelve a incluir ya liquidadas, el GGR queda subestimado de forma permanente. La solución: exportar siempre los últimos 14 días, no solo el día anterior.",
+      staleNone: "No hay apuestas abiertas pendientes de liquidación.",
+      dayCol: "Día", betsCol: "Apuestas", stakeCol: "Apostado", openDays: "días abierta", potentialCol: "Pago potencial",
+    },
     wk: {
       title: "Rendimiento semanal", sub: "KPIs por semana con variación vs. semana anterior",
       kpi: "KPIs", value: "Valor", wow: "WoW%",
@@ -96,6 +104,14 @@ export const STRINGS = {
     trendTitle: "Registrations vs. FTD",
     acqTitle: "Acquisition & channels", acqSub: "GA4 — Appuesta RD property, via Supermetrics",
     acqNote: "⚠ GA4 conversions not configured yet — will show 0 until conversion events are set up.",
+    coverage: {
+      title: "Bet data coverage", sub: "Days with no bets received since operations started",
+      allCovered: "Every day has bets received.",
+      missingDays: "days with no data", missingHint: "A day with no bets can mean nobody bet, or that the day was never exported. Ask for an Altenar report covering these dates.",
+      staleTitle: "Open bets never updated", staleHint: "These bets were imported as “Open”. If a later report doesn't re-send them once settled, GGR stays permanently understated. The fix: always export the last 14 days, not just yesterday.",
+      staleNone: "No open bets pending settlement.",
+      dayCol: "Day", betsCol: "Bets", stakeCol: "Staked", openDays: "days open", potentialCol: "Potential payout",
+    },
     wk: {
       title: "Weekly performance", sub: "KPIs by week with week-over-week change",
       kpi: "KPIs", value: "Value", wow: "WoW%",

@@ -5,7 +5,7 @@ import {
 import { Radio, Plus, Users, MousePointerClick, Activity, Target } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C, LINE_COLORS } from "../lib/theme";
-import { getPeriodRange, monthOptions, currentBudgetMonth, formatMonth, weeksInMonth, previousWeek } from "../lib/period";
+import { getPeriodRange, monthOptions, currentBudgetMonth, formatMonth, weeksInMonth, previousWeek, weekStartOf } from "../lib/period";
 import { aggregateByChannel, pivotSessionsByDate, deriveWeeklyKpis } from "../lib/metrics";
 import WeeklyKpiGrid from "../components/WeeklyKpiGrid";
 import { SectionHeading, Panel, PeriodBar, Spinner, KpiCard, fmtDOP, deltaOf, EmptyState } from "../components/ui";
@@ -63,6 +63,7 @@ export default function Acquisition({ s, lang }) {
   const [tab, setTab] = useState("weekly");
   const [weeklyRows, setWeeklyRows] = useState([]);
   const [savingWeek, setSavingWeek] = useState(null);
+  const [opsStart, setOpsStart] = useState(null);
 
   async function loadAll() {
     setLoading(true);
@@ -118,9 +119,10 @@ export default function Acquisition({ s, lang }) {
     return () => { active = false; };
   }, [budgetMonth]);
 
-  // The weekly report spans the selected month plus the week before it, so the
-  // first column still has a base to compute its week-over-week change against.
-  const reportWeeks = weeksInMonth(budgetMonth);
+  // Operations launched mid-August 2026; earlier weeks are soft-launch and test
+  // accounts, so they are dropped rather than shown as columns of near-zeroes.
+  const reportWeeks = weeksInMonth(budgetMonth)
+    .filter(w => !opsStart || w >= weekStartOf(opsStart));
 
   async function loadWeekly() {
     if (!reportWeeks.length) return;
@@ -132,7 +134,17 @@ export default function Acquisition({ s, lang }) {
     setWeeklyRows(data || []);
   }
 
-  useEffect(() => { loadWeekly(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [budgetMonth]);
+  useEffect(() => { loadWeekly(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [budgetMonth, opsStart]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data } = await supabase
+        .from("app_settings").select("value").eq("key", "operations_start_date").maybeSingle();
+      if (active && data?.value) setOpsStart(data.value);
+    })();
+    return () => { active = false; };
+  }, []);
 
   async function saveWeeklySpend(week, value) {
     setSavingWeek(week);
