@@ -9,6 +9,9 @@ import { SectionHeading, Panel, Spinner, fmtDOP } from "./ui";
  * picked, so a day nobody exported looks identical to a day with no betting.
  * Neither gap is recoverable after the fact, so both are surfaced here rather
  * than left to be discovered in a wrong revenue figure weeks later.
+ *
+ * Futures stay Open for months by design, so only bets whose event has already
+ * been played count as a missing settlement.
  */
 export default function DataCoverage({ s, lang }) {
   const [loading, setLoading] = useState(true);
@@ -81,10 +84,10 @@ export default function DataCoverage({ s, lang }) {
               {stale.map(b => (
                 <tr key={b.bet_id}>
                   <td style={{ padding: "7px 12px" }}>{b.player_username || b.external_user_id || "—"}</td>
-                  <td style={{ padding: "7px 12px", color: C.inkDim }}>{String(b.bet_date).slice(0, 10)}</td>
+                  <td style={{ padding: "7px 12px", color: C.inkDim }}>{String(b.event_date || b.bet_date).slice(0, 10)}</td>
                   <td style={{ padding: "7px 12px" }}>{fmtDOP(b.stake)}</td>
                   <td style={{ padding: "7px 12px" }}>{fmtDOP(b.potential_payout)}</td>
-                  <td style={{ padding: "7px 12px", color: C.negative }}>{b.days_open} {s.coverage.openDays}</td>
+                  <td style={{ padding: "7px 12px", color: C.negative }}>{b.days_since_event} {s.coverage.openDays}</td>
                 </tr>
               ))}
             </tbody>
