@@ -42,7 +42,12 @@ export async function parseAltenarFile(file) {
   }
 
   const now = new Date().toISOString();
-  const bets = [];
+  // Keyed by bet_id: the table's primary key is bet_id, and Postgres rejects an
+  // upsert whose batch touches the same row twice ("ON CONFLICT DO UPDATE
+  // command cannot affect row a second time"). A single export repeating a bet
+  // would otherwise fail the whole import, so the last occurrence wins — that
+  // is the most recently settled version of the bet.
+  const betsById = new Map();
   const seenStatuses = new Set();
   let earliestBet = null;
   let latestBet = null;
@@ -59,7 +64,7 @@ export async function parseAltenarFile(file) {
       if (!latestBet || betDate > latestBet) latestBet = betDate;
     }
 
-    bets.push({
+    betsById.set(betId, {
       bet_id: betId,
       player_username: toText(r.player_username),
       player_id: toIdText(r.player_id),
@@ -84,6 +89,7 @@ export async function parseAltenarFile(file) {
   // A status nobody has classified yet would silently land in GGR and in tier
   // qualification, so it is reported back for a human to rule on.
   const unknownStatuses = [...seenStatuses].filter(st => !KNOWN_STATUSES.includes(st));
+  const bets = [...betsById.values()];
 
   return {
     bets,
