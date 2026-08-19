@@ -12,6 +12,7 @@ import {
 import { aggregateByChannel, pivotSessionsByDate, deriveWeeklyKpis } from "../lib/metrics";
 import { SectionHeading, Panel, PeriodBar, Spinner, KpiCard, fmtDOP, deltaOf, EmptyState } from "../components/ui";
 import WeeklyKpiGrid from "../components/WeeklyKpiGrid";
+import GoalTracker from "../components/GoalTracker";
 
 const fmtPct = n => (n == null ? "—" : `${(n * 100).toFixed(1)}%`);
 
@@ -151,6 +152,8 @@ export default function Acquisition({ s, lang }) {
               )}
             </span>
           </div>
+
+          <GoalTracker s={s} lang={lang} month={month} />
 
           <WeeklyKpiGrid s={s} lang={lang} weeks={reportWeeks} rowsByWeek={rowsByWeek}
             onEditSpend={saveWeeklySpend} savingWeek={savingWeek} />

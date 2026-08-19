@@ -4,8 +4,8 @@ import { C } from "../lib/theme";
 import { formatWeek, formatMonth } from "../lib/period";
 import { SectionHeading, Panel, Spinner, EmptyState } from "../components/ui";
 
-const WEEK_INDEXES = [0, 1, 2, 3, 4, 5, 6, 7, 8];
-const MONTH_INDEXES = [0, 1, 2, 3];
+const WEEK_INDEXES = [1, 2, 3, 4, 5, 6, 7, 8];
+const MONTH_INDEXES = [1, 2, 3];
 
 /** Heat scale for a retention percentage; immature cells never get a colour. */
 function cellStyle(pct, mature) {

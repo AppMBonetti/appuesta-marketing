@@ -78,10 +78,15 @@ export function deriveWeeklyKpis(row) {
   const depositAmount = num(row?.deposit_amount);
   const depositors = num(row?.depositors);
   const ggr = num(row?.ggr);
+  // Players who actually wagered that week — the correct denominator for ARPU.
+  // Depositors was wrong twice over: it counted only people who topped up, and
+  // it was divided into an all-time GGR figure.
+  const activePlayers = num(row?.active_players);
+  const arpuMedian = num(row?.median_ggr_per_player);
 
   return {
     spend, sessions, registrations, ftds, ftdRevenue, ftdRevenueKnown,
-    depositCount, depositAmount, depositors, ggr,
+    depositCount, depositAmount, depositors, ggr, activePlayers, arpuMedian,
     ftdRevenueCoverage: ratio(ftdRevenueKnown, ftds),
     costPerSession: ratio(spend, sessions),
     costPerRegistration: ratio(spend, registrations),
@@ -91,7 +96,7 @@ export function deriveWeeklyKpis(row) {
     roasGgr: ratio(ggr, spend),
     trafficToRegistration: ratio(registrations, sessions),
     registrationToDeposit: ratio(ftds, registrations),
-    arpu: ratio(ggr, depositors),
+    arpu: ratio(ggr, activePlayers),
   };
 }
 
@@ -120,7 +125,9 @@ export const WEEKLY_KPI_GROUPS = [
       { key: "depositAmount", format: "money", better: "up" },
       { key: "depositors", format: "int", better: "up" },
       { key: "ggr", format: "money", better: "up" },
+      { key: "activePlayers", format: "int", better: "up" },
       { key: "arpu", format: "money", better: "up" },
+      { key: "arpuMedian", format: "money", better: "up" },
     ],
   },
   {

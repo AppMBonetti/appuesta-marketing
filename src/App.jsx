@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   LayoutGrid, TrendingUp, Users, Repeat, Crown, NotebookPen,
-  SlidersHorizontal, UploadCloud,
+  SlidersHorizontal, UploadCloud, UsersRound,
 } from "lucide-react";
 import { C } from "./lib/theme";
 import { getCurrencyState, loadFxRate, restoreCurrency, setCurrency } from "./lib/currency";
@@ -17,6 +17,7 @@ import Acquisition from "./pages/Acquisition";
 import Funnel from "./pages/Funnel";
 import Retention from "./pages/Retention";
 import Vip from "./pages/Vip";
+import Segments from "./pages/Segments";
 import Optimization from "./pages/Optimization";
 import Imports from "./pages/Imports";
 import Settings from "./pages/Settings";
@@ -85,6 +86,7 @@ function Dashboard({ lang, setLang, s }) {
     { id: "funnel", label: s.nav.funnel, icon: Users },
     { id: "retention", label: s.nav.retention, icon: Repeat, flag: true },
     { id: "vip", label: s.nav.vip, icon: Crown },
+    { id: "segments", label: s.nav.segments, icon: UsersRound },
     { id: "optimization", label: s.nav.optimization, icon: NotebookPen },
     { id: "imports", label: s.nav.imports, icon: UploadCloud },
     { id: "settings", label: s.nav.settings, icon: SlidersHorizontal },
@@ -143,6 +145,7 @@ function Dashboard({ lang, setLang, s }) {
         {tab === "funnel" && <Funnel s={s} lang={lang} />}
         {tab === "retention" && <Retention s={s} lang={lang} />}
         {tab === "vip" && <Vip s={s} lang={lang} />}
+        {tab === "segments" && <Segments s={s} lang={lang} />}
         {tab === "optimization" && <Optimization s={s} lang={lang} />}
         {tab === "imports" && <Imports s={s} lang={lang} />}
         {tab === "settings" && <Settings s={s} lang={lang} />}

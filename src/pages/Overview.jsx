@@ -10,6 +10,7 @@ import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../component
 import { fmtMoney } from "../lib/currency";
 import SparkTile from "../components/SparkTile";
 import CoverageBar from "../components/CoverageBar";
+import GoalTracker from "../components/GoalTracker";
 
 const WEEK_RANGES = [4, 8, 12, 0];  // 0 = every week since launch
 
@@ -80,6 +81,8 @@ export default function Overview({ s, lang }) {
       />
 
       <CoverageBar s={s} lang={lang} weekEnd={lastWeekEnd} />
+
+      <GoalTracker s={s} lang={lang} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <span style={{ fontSize: 12.5, color: C.inkDim }}>{s.ov.range}</span>
