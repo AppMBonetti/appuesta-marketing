@@ -71,18 +71,22 @@ export function deriveWeeklyKpis(row) {
   const registrations = num(row?.registrations);
   const ftds = num(row?.ftds);
   const ftdRevenue = num(row?.ftd_revenue);
+  // How many of the week's FTDs have a known first-deposit value. The average
+  // must divide by that, not by every FTD, or an incomplete week reads low.
+  const ftdRevenueKnown = num(row?.ftd_revenue_known);
   const depositCount = num(row?.deposit_count);
   const depositAmount = num(row?.deposit_amount);
   const depositors = num(row?.depositors);
   const ggr = num(row?.ggr);
 
   return {
-    spend, sessions, registrations, ftds, ftdRevenue,
+    spend, sessions, registrations, ftds, ftdRevenue, ftdRevenueKnown,
     depositCount, depositAmount, depositors, ggr,
+    ftdRevenueCoverage: ratio(ftdRevenueKnown, ftds),
     costPerSession: ratio(spend, sessions),
     costPerRegistration: ratio(spend, registrations),
     costPerAcquisition: ratio(spend, ftds),
-    avgFtdValue: ratio(ftdRevenue, ftds),
+    avgFtdValue: ratio(ftdRevenue, ftdRevenueKnown),
     roasDeposits: ratio(depositAmount, spend),
     roasGgr: ratio(ggr, spend),
     trafficToRegistration: ratio(registrations, sessions),
@@ -110,7 +114,7 @@ export const WEEKLY_KPI_GROUPS = [
     id: "revenue",
     rows: [
       { key: "ftds", format: "int", better: "up" },
-      { key: "ftdRevenue", format: "money", better: "up" },
+      { key: "ftdRevenue", format: "money", better: "up", coverageOf: "ftds", coverageCount: "ftdRevenueKnown" },
       { key: "avgFtdValue", format: "money", better: "up" },
       { key: "depositCount", format: "int", better: "up" },
       { key: "depositAmount", format: "money", better: "up" },
