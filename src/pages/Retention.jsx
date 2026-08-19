@@ -1,195 +1,129 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
+import { formatWeek, formatMonth } from "../lib/period";
 import { SectionHeading, Panel, Spinner, EmptyState } from "../components/ui";
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const WEEKLY_MILESTONES = [0, 1, 2, 4, 8];
-const MONTHLY_MILESTONES = [1, 2, 3];
-const WEEKLY_COHORT_COUNT = 9;
-const MONTHLY_COHORT_COUNT = 4;
+const WEEK_INDEXES = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+const MONTH_INDEXES = [0, 1, 2, 3];
 
-function mondayOf(d) {
-  const day = d.getDay();
-  const monday = new Date(d);
-  monday.setDate(d.getDate() + ((day === 0 ? -6 : 1) - day));
-  monday.setHours(0, 0, 0, 0);
-  return monday;
-}
-function firstOfMonth(d) {
-  return new Date(d.getFullYear(), d.getMonth(), 1);
-}
-
-async function fetchCohortData(earliestDate) {
-  // Fetch players registered on/after earliestDate, along with their bets' dates (left join).
-  const { data, error } = await supabase
-    .from("players")
-    .select("id, registered_at, vip_tier, bets(bet_date)")
-    .gte("registered_at", earliestDate.toISOString());
-  if (error) throw error;
-  return data || [];
-}
-
-function buildWeeklyCohorts(players) {
-  const now = new Date();
-  const thisMonday = mondayOf(now);
-  const cohortMap = new Map(); // mondayISO -> players[]
-
-  for (const p of players) {
-    if (!p.registered_at) continue;
-    const monday = mondayOf(new Date(p.registered_at));
-    const key = monday.toISOString().slice(0, 10);
-    if (!cohortMap.has(key)) cohortMap.set(key, []);
-    cohortMap.get(key).push(p);
+/** Heat scale for a retention percentage; immature cells never get a colour. */
+function cellStyle(pct, mature) {
+  if (!mature) {
+    return { background: "#171B22", color: C.inkFaint, border: `1px dashed ${C.panelBorder}` };
   }
-
-  const rows = [...cohortMap.entries()]
-    .sort(([a], [b]) => b.localeCompare(a))
-    .slice(0, WEEKLY_COHORT_COUNT)
-    .map(([mondayISO, players]) => {
-      const monday = new Date(mondayISO);
-      const weeksAgo = Math.round((thisMonday - monday) / WEEK_MS);
-      const label = monday.toLocaleDateString("es-DO", { day: "numeric", month: "short" });
-      const milestoneValues = {};
-      for (const m of WEEKLY_MILESTONES) {
-        const matured = weeksAgo >= m;
-        if (!matured) { milestoneValues[`w${m}`] = null; continue; }
-        const windowStart = new Date(monday.getTime() + m * WEEK_MS);
-        const windowEnd = new Date(monday.getTime() + (m + 1) * WEEK_MS);
-        const retainedCount = players.filter(p =>
-          (p.bets || []).some(b => {
-            const bd = new Date(b.bet_date);
-            return bd >= windowStart && bd < windowEnd;
-          })
-        ).length;
-        milestoneValues[`w${m}`] = players.length ? Math.round((retainedCount / players.length) * 100) : 0;
-      }
-      return { label, weeksAgo, pop: players.length, ...milestoneValues };
-    });
-
-  return rows.reverse(); // oldest first
+  const value = Number(pct) || 0;
+  if (value === 0) return { background: "#161A21", color: C.inkFaint, border: `1px solid ${C.panelBorder}` };
+  // 0-100% mapped onto the accent, floored so a low-but-real value stays visible.
+  const alpha = 0.14 + Math.min(value, 100) / 100 * 0.66;
+  return {
+    background: `rgba(228, 2, 43, ${alpha.toFixed(3)})`,
+    color: value > 45 ? "#fff" : C.ink,
+    border: `1px solid ${C.panelBorder}`,
+  };
 }
 
-function buildMonthlyCohorts(players) {
-  const now = new Date();
-  const thisMonthStart = firstOfMonth(now);
-  const cohortMap = new Map();
-
-  for (const p of players) {
-    if (!p.registered_at) continue;
-    const monthStart = firstOfMonth(new Date(p.registered_at));
-    const key = monthStart.toISOString().slice(0, 10);
-    if (!cohortMap.has(key)) cohortMap.set(key, []);
-    cohortMap.get(key).push(p);
-  }
-
-  const rows = [...cohortMap.entries()]
-    .sort(([a], [b]) => b.localeCompare(a))
-    .slice(0, MONTHLY_COHORT_COUNT)
-    .map(([monthISO, players]) => {
-      const monthStart = new Date(monthISO);
-      const monthsAgo = (thisMonthStart.getFullYear() - monthStart.getFullYear()) * 12 + (thisMonthStart.getMonth() - monthStart.getMonth());
-      const label = monthStart.toLocaleDateString("es-DO", { month: "short", year: "numeric" });
-      const milestoneValues = {};
-      for (const m of MONTHLY_MILESTONES) {
-        const matured = monthsAgo >= m;
-        if (!matured) { milestoneValues[`m${m}`] = null; continue; }
-        const windowStart = new Date(monthStart.getFullYear(), monthStart.getMonth() + m, 1);
-        const windowEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + m + 1, 1);
-        const retainedCount = players.filter(p =>
-          (p.bets || []).some(b => {
-            const bd = new Date(b.bet_date);
-            return bd >= windowStart && bd < windowEnd;
-          })
-        ).length;
-        milestoneValues[`m${m}`] = players.length ? Math.round((retainedCount / players.length) * 100) : 0;
-      }
-      return { label, monthsAgo, pop: players.length, ...milestoneValues };
-    });
-
-  return rows.reverse();
+function Grid({ rows, indexes, keyField, labelFor, indexLabel, s }) {
+  const th = { padding: "9px 12px", fontSize: 11.5, color: C.inkDim, fontWeight: 500, whiteSpace: "nowrap" };
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ borderCollapse: "separate", borderSpacing: 3, minWidth: 560 }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: "left" }}>{s.ret.cohort}</th>
+            <th style={{ ...th, textAlign: "right" }}>{s.ret.players}</th>
+            {indexes.map(i => <th key={i} style={th}>{indexLabel} {i}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(row => (
+            <tr key={row[keyField]}>
+              <td style={{ padding: "8px 12px", fontSize: 12.5, whiteSpace: "nowrap", color: C.ink }}>{labelFor(row[keyField])}</td>
+              <td style={{ padding: "8px 12px", fontSize: 12.5, textAlign: "right", color: C.inkDim }}>{row.players}</td>
+              {indexes.map(i => {
+                const cell = row.cells[i];
+                const style = cellStyle(cell?.pct, cell?.mature);
+                return (
+                  <td key={i} style={{
+                    ...style, padding: "8px 10px", fontSize: 12, textAlign: "center",
+                    borderRadius: 7, minWidth: 54, fontVariantNumeric: "tabular-nums",
+                  }}
+                  title={cell?.mature ? `${cell.retained} / ${row.players}` : s.maturing}>
+                    {cell?.mature ? `${Number(cell.pct).toFixed(0)}%` : "·"}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
-function buildTierRetention(players) {
-  const now = new Date();
-  const cutoff = new Date(now.getTime() - 4 * WEEK_MS);
-  const byTier = new Map();
-  for (const p of players) {
-    if (!p.vip_tier || !p.registered_at) continue;
-    const regDate = new Date(p.registered_at);
-    if (regDate > cutoff) continue; // must be at least 4 weeks old
-    if (!byTier.has(p.vip_tier)) byTier.set(p.vip_tier, []);
-    byTier.get(p.vip_tier).push(p);
+/** Collapses the flat (cohort, index) rows the view returns into one row per cohort. */
+function pivot(flatRows, keyField, indexField) {
+  const byCohort = new Map();
+  for (const row of flatRows) {
+    const key = row[keyField];
+    if (!byCohort.has(key)) byCohort.set(key, { [keyField]: key, players: row.players, cells: {} });
+    byCohort.get(key).cells[row[indexField]] = {
+      pct: row.pct, retained: row.retained, mature: row.mature,
+    };
   }
-  const rows = [];
-  for (const [tier, tierPlayers] of byTier.entries()) {
-    const retained = tierPlayers.filter(p => {
-      const monday = mondayOf(new Date(p.registered_at));
-      const windowStart = new Date(monday.getTime() + 4 * WEEK_MS);
-      const windowEnd = new Date(monday.getTime() + 5 * WEEK_MS);
-      return (p.bets || []).some(b => {
-        const bd = new Date(b.bet_date);
-        return bd >= windowStart && bd < windowEnd;
-      });
-    }).length;
-    rows.push({ tier, retW4: tierPlayers.length ? Math.round((retained / tierPlayers.length) * 100) : 0, pop: tierPlayers.length });
-  }
-  return rows;
+  return [...byCohort.values()].sort((a, b) => String(a[keyField]).localeCompare(String(b[keyField])));
 }
 
 export default function Retention({ s, lang }) {
-  const [retView, setRetView] = useState("total");
-  const [retGran, setRetGran] = useState("week");
+  const [view, setView] = useState("total");
+  const [granularity, setGranularity] = useState("week");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [weeklyCohorts, setWeeklyCohorts] = useState([]);
-  const [monthlyCohorts, setMonthlyCohorts] = useState([]);
-  const [tierRows, setTierRows] = useState([]);
+  const [weekly, setWeekly] = useState([]);
+  const [monthly, setMonthly] = useState([]);
+  const [byTier, setByTier] = useState([]);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setError(null);
-
     (async () => {
-      try {
-        const now = new Date();
-        const earliest = new Date(now.getTime() - (WEEKLY_COHORT_COUNT + WEEKLY_MILESTONES.at(-1) + 1) * WEEK_MS);
-        const players = await fetchCohortData(earliest);
-        if (!active) return;
-        setWeeklyCohorts(buildWeeklyCohorts(players));
-        setTierRows(buildTierRetention(players));
-
-        const earliestMonthly = new Date(now.getFullYear(), now.getMonth() - (MONTHLY_COHORT_COUNT + MONTHLY_MILESTONES.at(-1)), 1);
-        const monthlyPlayers = earliestMonthly < earliest ? await fetchCohortData(earliestMonthly) : players;
-        if (!active) return;
-        setMonthlyCohorts(buildMonthlyCohorts(monthlyPlayers));
-      } catch (e) {
-        if (active) setError(e.message);
-      } finally {
-        if (active) setLoading(false);
-      }
+      const [w, m, t] = await Promise.all([
+        supabase.from("cohort_retention_weekly").select("*").order("cohort_week"),
+        supabase.from("cohort_retention_monthly").select("*").order("cohort_month"),
+        supabase.from("cohort_retention_by_tier").select("*").order("tier_order"),
+      ]);
+      if (!active) return;
+      const failure = w.error || m.error || t.error;
+      if (failure) setError(failure.message);
+      setWeekly(pivot(w.data || [], "cohort_week", "week_index"));
+      setMonthly(pivot(m.data || [], "cohort_month", "month_index"));
+      setByTier(t.data || []);
+      setLoading(false);
     })();
-
     return () => { active = false; };
   }, []);
 
-  const hasWeekly = weeklyCohorts.some(r => r.pop > 0);
-  const hasMonthly = monthlyCohorts.some(r => r.pop > 0);
-  const hasTier = tierRows.some(r => r.pop > 0);
+  const hasWeekly = weekly.some(r => r.players > 0);
+  const hasMonthly = monthly.some(r => r.players > 0);
+  const matureTiers = byTier.filter(r => r.players > 0);
+  const note = { color: C.inkFaint, fontSize: 11.5, lineHeight: 1.6, margin: "10px 0 0", maxWidth: 760 };
 
   return (
     <>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-        <SectionHeading title={s.retTitle} subtitle={s.retSub} />
+        <SectionHeading title={s.retTitle} subtitle={`${s.retSub} · ${s.ret.anchored}`} />
         <div style={{ display: "flex", gap: 8 }}>
-          {retView === "total" && (
+          {view === "total" && (
             <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
-              {["week", "month"].map(g => <button key={g} onClick={() => setRetGran(g)} style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: retGran === g ? "#2A303B" : "transparent", color: retGran === g ? C.ink : C.inkDim }}>{s.granToggle[g]}</button>)}
+              {["week", "month"].map(g => (
+                <button key={g} onClick={() => setGranularity(g)} style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: granularity === g ? "#2A303B" : "transparent", color: granularity === g ? C.ink : C.inkDim }}>{s.granToggle[g]}</button>
+              ))}
             </div>
           )}
           <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
-            {["total", "segment"].map(v => <button key={v} onClick={() => setRetView(v)} style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: retView === v ? C.accent : "transparent", color: retView === v ? "#fff" : C.inkDim }}>{v === "total" ? s.retToggle.total : s.retToggle.bySegment}</button>)}
+            {["total", "segment"].map(v => (
+              <button key={v} onClick={() => setView(v)} style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: view === v ? C.accent : "transparent", color: view === v ? "#fff" : C.inkDim }}>{v === "total" ? s.retToggle.total : s.retToggle.bySegment}</button>
+            ))}
           </div>
         </div>
       </div>
@@ -197,72 +131,60 @@ export default function Retention({ s, lang }) {
       {loading && <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spinner size={22} /></div>}
       {error && <Panel style={{ color: C.negative, marginTop: 12 }}>{error}</Panel>}
 
-      {!loading && !error && retView === "total" && (
-        <>
-          {retGran === "week" ? (
-            !hasWeekly ? <div style={{ marginTop: 12 }}><EmptyState s={s} /></div> : (
-              <Panel style={{ padding: 4, overflow: "hidden", marginBottom: 12, marginTop: 12 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead><tr>{[lang === "es" ? "Cohorte" : "Cohort", "Sem 0", "Sem 1", "Sem 2", "Sem 4", "Sem 8"].map(h => <th key={h} style={{ padding: "12px 16px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 12 }}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {weeklyCohorts.map(row => (
-                      <tr key={row.label}>
-                        <td style={{ padding: "10px 16px", fontWeight: 500 }}>{row.label} <span style={{ color: C.inkFaint, fontWeight: 400 }}>({row.pop})</span></td>
-                        {WEEKLY_MILESTONES.map(m => {
-                          const v = row[`w${m}`];
-                          return <td key={m} style={{ padding: "10px 16px" }}>
-                            {v == null ? <span style={{ color: C.inkFaint, fontStyle: "italic", fontSize: 12 }}>{s.maturing}</span> :
-                              <span style={{ display: "inline-block", padding: "3px 9px", borderRadius: 6, background: `rgba(228,2,43,${v / 130})`, color: v > 60 ? "#fff" : C.ink, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{v}%</span>}
-                          </td>;
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Panel>
-            )
-          ) : (
-            !hasMonthly ? <div style={{ marginTop: 12 }}><EmptyState s={s} /></div> : (
-              <Panel style={{ padding: 4, overflow: "hidden", marginBottom: 12, marginTop: 12 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead><tr>{[lang === "es" ? "Cohorte" : "Cohort", "Mes +1", "Mes +2", "Mes +3"].map(h => <th key={h} style={{ padding: "12px 16px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 12 }}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {monthlyCohorts.map(row => (
-                      <tr key={row.label}>
-                        <td style={{ padding: "10px 16px", fontWeight: 500 }}>{row.label} <span style={{ color: C.inkFaint, fontWeight: 400 }}>({row.pop})</span></td>
-                        {MONTHLY_MILESTONES.map(m => {
-                          const v = row[`m${m}`];
-                          return <td key={m} style={{ padding: "10px 16px" }}>
-                            {v == null ? <span style={{ color: C.inkFaint, fontStyle: "italic", fontSize: 12 }}>{s.maturing}</span> :
-                              <span style={{ display: "inline-block", padding: "3px 9px", borderRadius: 6, background: `rgba(228,2,43,${v / 45})`, color: v > 25 ? "#fff" : C.ink, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{v}%</span>}
-                          </td>;
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Panel>
-            )
-          )}
-          <p style={{ color: C.inkFaint, fontSize: 12, margin: 0 }}>{s.maturingNote}</p>
-        </>
+      {!loading && !error && view === "total" && (
+        granularity === "week" ? (
+          !hasWeekly ? <EmptyState s={s} /> : (
+            <Panel>
+              <Grid rows={weekly} indexes={WEEK_INDEXES} keyField="cohort_week"
+                labelFor={v => formatWeek(v, lang)} indexLabel={s.ret.week} s={s} />
+              <p style={note}>{s.ret.activityNote}</p>
+              <p style={note}>{s.ret.maturingNote}</p>
+            </Panel>
+          )
+        ) : (
+          !hasMonthly ? <EmptyState s={s} /> : (
+            <Panel>
+              <Grid rows={monthly} indexes={MONTH_INDEXES} keyField="cohort_month"
+                labelFor={v => formatMonth(v, lang)} indexLabel={s.ret.month} s={s} />
+              <p style={note}>{s.ret.activityNote}</p>
+              <p style={note}>{s.ret.maturingNote}</p>
+            </Panel>
+          )
+        )
       )}
 
-      {!loading && !error && retView === "segment" && (
-        !hasTier ? <div style={{ marginTop: 12 }}><EmptyState s={s} /></div> : (
-          <>
-            <p style={{ color: C.inkDim, fontSize: 12.5, marginTop: 12, marginBottom: 14 }}>{s.retByTierSub}</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {tierRows.map(t => (
-                <div key={t.tier} style={{ background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 12, padding: "14px 18px", display: "flex", alignItems: "center", gap: 16 }}>
-                  <div style={{ width: 130, fontWeight: 500, fontSize: 13 }}>{t.tier}</div>
-                  <div style={{ flex: 1, background: "#1D222B", borderRadius: 8, height: 20 }}><div style={{ width: `${t.retW4}%`, height: "100%", borderRadius: 8, background: C.accent }} /></div>
-                  <div style={{ width: 60, textAlign: "right", fontWeight: 600 }}>{t.retW4}%</div>
-                </div>
-              ))}
-            </div>
-          </>
-        )
+      {!loading && !error && view === "segment" && (
+        <>
+          <SectionHeading title={s.retByTierSub} />
+          {matureTiers.length === 0 ? (
+            <Panel style={{ color: C.inkDim, fontSize: 12.5 }}>{s.ret.noMature}</Panel>
+          ) : (
+            <Panel style={{ padding: 4, overflow: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead><tr>{[s.vipCols.tier, s.ret.players, s.retByTierSub].map(h => (
+                  <th key={h} style={{ padding: "11px 16px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 12 }}>{h}</th>
+                ))}</tr></thead>
+                <tbody>
+                  {matureTiers.map(row => (
+                    <tr key={row.tier_name}>
+                      <td style={{ padding: "10px 16px", fontWeight: 500 }}>{row.tier_name}</td>
+                      <td style={{ padding: "10px 16px", color: C.inkDim }}>{row.players}</td>
+                      <td style={{ padding: "10px 16px" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 320 }}>
+                          <span style={{ flex: 1, background: "#1D222B", borderRadius: 6, height: 8 }}>
+                            <span style={{ display: "block", width: `${Number(row.pct) || 0}%`, height: "100%", borderRadius: 6, background: C.accent }} />
+                          </span>
+                          <strong>{row.pct == null ? "—" : `${Number(row.pct).toFixed(0)}%`}</strong>
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+          )}
+          <p style={note}>{s.ret.tierNote}</p>
+        </>
       )}
     </>
   );
