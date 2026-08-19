@@ -74,6 +74,12 @@ export const STRINGS = {
       lowerIsBetter: "menor es mejor",
       saved: "Guardado", saveAll: "Guardar metas",
     },
+    coverageBar: {
+      through: "Datos hasta", tz: "Zona horaria de reporte",
+      players: "Jugadores", bets: "Apuestas", traffic: "Tráfico", social: "Social",
+      partialWeek: "La semana en curso está incompleta — termina el {d}.",
+      noneYet: "sin datos",
+    },
     currency: { label: "Moneda", noRate: "Tipo de cambio no disponible todavía — los montos siguen en DOP.", rateNote: "Tasa del día, vía open.er-api.com" },
     ov: {
       heroTitle: "Resumen", heroSub: "Tendencia semanal desde el inicio de operaciones",
@@ -254,6 +260,12 @@ export const STRINGS = {
       },
       lowerIsBetter: "lower is better",
       saved: "Saved", saveAll: "Save goals",
+    },
+    coverageBar: {
+      through: "Data through", tz: "Reporting timezone",
+      players: "Players", bets: "Bets", traffic: "Traffic", social: "Social",
+      partialWeek: "The current week is still open — it ends {d}.",
+      noneYet: "no data",
     },
     currency: { label: "Currency", noRate: "Exchange rate not available yet — amounts stay in DOP.", rateNote: "Daily rate, via open.er-api.com" },
     ov: {
