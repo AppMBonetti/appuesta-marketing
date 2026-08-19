@@ -125,7 +125,7 @@ export default function Imports({ s, lang }) {
 
         setPhase(source, "done", { rowCount: players.length, unmatchedHeaders });
       } else {
-        const { bets, unmatchedHeaders, coverage } = await parseAltenarFile(file);
+        const { bets, unmatchedHeaders, unknownStatuses, coverage } = await parseAltenarFile(file);
         if (bets.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
 
         setPhase(source, "importing");
@@ -143,7 +143,7 @@ export default function Imports({ s, lang }) {
         const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
         if (rpcErr) throw rpcErr;
 
-        setPhase(source, "done", { rowCount: bets.length, orphaned, unmatchedHeaders });
+        setPhase(source, "done", { rowCount: bets.length, orphaned, unmatchedHeaders, unknownStatuses });
       }
 
       loadLog();
@@ -205,6 +205,14 @@ export default function Imports({ s, lang }) {
                     {state.orphaned > 0 && (lang === "es"
                       ? ` — ${state.orphaned} sin jugador asociado aún`
                       : ` — ${state.orphaned} without a matching player yet`)}
+                    {state.unknownStatuses?.length > 0 && (
+                      <div style={{ color: C.negative, marginTop: 4 }}>
+                        {lang === "es"
+                          ? "Estados de apuesta no reconocidos (revisar si cuentan como apuesta): "
+                          : "Unrecognized bet statuses (check whether they count as wagering): "}
+                        {state.unknownStatuses.join(", ")}
+                      </div>
+                    )}
                     {state.unmatchedHeaders?.length > 0 && (
                       <div style={{ color: C.inkFaint, marginTop: 4 }}>
                         {lang === "es" ? "Columnas no reconocidas: " : "Unrecognized columns: "}{state.unmatchedHeaders.join(", ")}

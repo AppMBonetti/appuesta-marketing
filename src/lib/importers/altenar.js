@@ -26,6 +26,13 @@ const HEADER_MAP = {
 
 const REQUIRED_FIELDS = ["bet_id"];
 
+// Statuses seen in real exports. A bet whose stake is handed back never counted
+// as wagering, so it is excluded from GGR and from VIP tier qualification —
+// this mirrors what Altenar itself leaves out of its "Totals of report" sheet.
+const RETURNED_STAKE_STATUSES = ["Void", "VoidCashout", "Rejected"];
+const SETTLED_STATUSES = ["Win", "Lost", "Open", "Cashout"];
+const KNOWN_STATUSES = [...RETURNED_STAKE_STATUSES, ...SETTLED_STATUSES];
+
 export async function parseAltenarFile(file) {
   const { rows, matchedHeaders, unmatchedHeaders } = await parseXlsxFile(file, HEADER_MAP);
 
@@ -36,11 +43,15 @@ export async function parseAltenarFile(file) {
 
   const now = new Date().toISOString();
   const bets = [];
+  const seenStatuses = new Set();
   let earliestBet = null;
   let latestBet = null;
   for (const r of rows) {
     const betId = toIdText(r.bet_id);
     if (!betId) continue;
+
+    const status = toText(r.status);
+    if (status) seenStatuses.add(status);
 
     const betDate = toISOTimestamp(r.bet_date);
     if (betDate) {
@@ -64,15 +75,20 @@ export async function parseAltenarFile(file) {
       stake: toNumber(r.stake),
       winnings: toNumber(r.winnings),
       currency: toText(r.currency),
-      status: toText(r.status),
+      status,
       bonus: toNumber(r.bonus) ?? 0,
       imported_at: now,
     });
   }
 
+  // A status nobody has classified yet would silently land in GGR and in tier
+  // qualification, so it is reported back for a human to rule on.
+  const unknownStatuses = [...seenStatuses].filter(st => !KNOWN_STATUSES.includes(st));
+
   return {
     bets,
     unmatchedHeaders,
+    unknownStatuses,
     coverage: { start: earliestBet, end: latestBet },
   };
 }
