@@ -165,6 +165,7 @@ export const STRINGS = {
     save: "Guardar cambios", saved: "Guardado ✓", langToggle: "EN", from: "Desde", to: "Hasta",
     noData: "Todavía no hay datos importados.", noDataSub: "Sube el reporte de InTarget en la pestaña “Importar datos” para ver esta sección con datos reales.",
     loading: "Cargando…",
+    configErrorTitle: "Dashboard sin configurar",
     // auth
     loginTitle: "Acceso al equipo", loginSub: "Ingresa tu correo de Appuesta y te enviaremos un enlace de acceso.",
     emailLabel: "Correo electrónico", emailPlaceholder: "tu@appuesta.do",
@@ -345,6 +346,7 @@ export const STRINGS = {
     save: "Save changes", saved: "Saved ✓", langToggle: "ES", from: "From", to: "To",
     noData: "No data imported yet.", noDataSub: "Upload the InTarget report from the “Data Import” tab to see this section with real data.",
     loading: "Loading…",
+    configErrorTitle: "Dashboard not configured",
     // auth
     loginTitle: "Team access", loginSub: "Enter your Appuesta email and we'll send you a sign-in link.",
     emailLabel: "Email", emailPlaceholder: "you@appuesta.do",
