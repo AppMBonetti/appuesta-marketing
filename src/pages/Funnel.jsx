@@ -8,6 +8,7 @@ import { C } from "../lib/theme";
 import { getPeriodRange, formatWeek } from "../lib/period";
 import { weeklyFromSnapshots } from "../lib/metrics";
 import { SectionHeading, Panel, KpiCard, PeriodBar, Spinner, fmtDOP, deltaOf, EmptyState } from "../components/ui";
+import GgrReconciliation from "../components/GgrReconciliation";
 
 async function countDepositStage(minCount, start, end) {
   const { count, error } = await supabase
@@ -250,6 +251,8 @@ export default function Funnel({ s, lang }) {
           </div>
 
           {!hasBets && <InfoNote tone="warn">{s.altenarPending}</InfoNote>}
+
+          <GgrReconciliation s={s} />
 
           <SectionHeading title={s.ggrWeeklyTitle} subtitle={hasBets ? s.ggrSub : s.ggrWeeklySub} />
           {ggrWeekly.length === 0 ? (

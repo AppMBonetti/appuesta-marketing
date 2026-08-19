@@ -4,6 +4,7 @@ import { weekRangeLabel, previousWeek } from "../lib/period";
 import { WEEKLY_KPI_GROUPS, wowChange } from "../lib/metrics";
 import { fmtMoney } from "../lib/currency";
 import { Spinner } from "./ui";
+import PlayerDrill, { DRILLABLE } from "./PlayerDrill";
 
 function formatValue(value, format) {
   if (value == null || Number.isNaN(value)) return "—";
@@ -35,6 +36,7 @@ function deltaStyle(change, better) {
 export default function WeeklyKpiGrid({ s, lang, weeks, rowsByWeek, onEditSpend, savingWeek }) {
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState("");
+  const [drill, setDrill] = useState(null);
 
   const labelCell = {
     position: "sticky", left: 0, zIndex: 2, background: C.panel,
@@ -56,6 +58,10 @@ export default function WeeklyKpiGrid({ s, lang, weeks, rowsByWeek, onEditSpend,
   }
 
   return (
+    <>
+    {drill && (
+      <PlayerDrill s={s} lang={lang} metric={drill.metric} week={drill.week} onClose={() => setDrill(null)} />
+    )}
     <div style={{ overflowX: "auto", border: `1px solid ${C.panelBorder}`, borderRadius: 14, background: C.panel }}>
       <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 620 }}>
         <thead>
@@ -99,16 +105,24 @@ export default function WeeklyKpiGrid({ s, lang, weeks, rowsByWeek, onEditSpend,
                     const change = wowChange(current, rowsByWeek[previousWeek(week)]?.[row.key] ?? null);
                     const style = deltaStyle(change, row.better);
                     const isEditing = editing === week && row.editable;
+                    const drillable = Boolean(DRILLABLE[row.key]) && current != null && current > 0;
 
                     return [
                       <td
                         key={`${week}-${row.key}-v`}
-                        onClick={row.editable ? () => { setEditing(week); setDraft(current == null ? "" : String(current)); } : undefined}
-                        title={row.editable ? s.wk.editSpendHint : undefined}
+                        onClick={
+                          row.editable ? () => { setEditing(week); setDraft(current == null ? "" : String(current)); }
+                          : drillable ? () => setDrill({ metric: row.key, week })
+                          : undefined
+                        }
+                        title={row.editable ? s.wk.editSpendHint : drillable ? s.drill.hint : undefined}
                         style={{
                           padding: "8px 12px", fontSize: 12.5, textAlign: "right",
                           borderLeft: `1px solid ${C.panelBorder}`, whiteSpace: "nowrap",
-                          cursor: row.editable ? "pointer" : "default",
+                          cursor: row.editable || drillable ? "pointer" : "default",
+                          textDecoration: drillable ? "underline dotted" : "none",
+                          textUnderlineOffset: 3,
+                          textDecorationColor: C.inkFaint,
                           fontVariantNumeric: "tabular-nums",
                           color: current == null ? C.inkFaint : C.ink,
                         }}
@@ -164,5 +178,6 @@ export default function WeeklyKpiGrid({ s, lang, weeks, rowsByWeek, onEditSpend,
         </tbody>
       </table>
     </div>
+    </>
   );
 }
