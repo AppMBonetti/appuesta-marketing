@@ -164,21 +164,8 @@ async function readSheetRows(file) {
   const isCsv = /\.(csv|tsv|txt)$/i.test(file.name || "");
   if (isCsv) return rowsFromDelimitedText(await file.text());
 
-  const { default: ExcelJS } = await import("exceljs");
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(await file.arrayBuffer());
-  const worksheet = workbook.worksheets[0];
-  if (!worksheet) throw new Error("No worksheet found in file");
-
-  const rows = [];
-  worksheet.eachRow({ includeEmpty: false }, row => {
-    const cells = [];
-    // `values` is 1-indexed with a leading hole; drop it so both readers agree.
-    const values = row.values || [];
-    for (let i = 1; i < values.length; i++) cells.push(values[i]);
-    rows.push(cells);
-  });
-  return rows;
+  const { readXlsxRows } = await import("./xlsx");
+  return readXlsxRows(await file.arrayBuffer());
 }
 
 /**
