@@ -1,91 +1,177 @@
 import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
-import { SectionHeading, Panel, Spinner } from "../components/ui";
+import { monthOptions, currentBudgetMonth, formatMonth, weeksInMonth } from "../lib/period";
+import { deriveWeeklyKpis } from "../lib/metrics";
+import { SectionHeading, Panel, Spinner, fmtDOP } from "../components/ui";
 
+// `lowerIsBetter` flips how attainment reads: hitting a CPA goal means coming in
+// under it, so 100% there is not the same shape as 100% of a registrations goal.
 const GOAL_DEFS = [
-  { key: "new_registrations", nameEs: "Nuevos registros", nameEn: "New registrations" },
-  { key: "ftd_count", nameEs: "FTDs", nameEn: "FTDs" },
-  { key: "retention_30d", nameEs: "Retención 30d (%)", nameEn: "30d retention (%)" },
-  { key: "cac_ltv_target", nameEs: "CAC : LTV (meta ≥)", nameEn: "CAC : LTV (target ≥)" },
+  { key: "monthly_budget", money: true, group: "budget" },
+  { key: "new_registrations", money: false, group: "goals" },
+  { key: "ftd_count", money: false, group: "goals" },
+  { key: "cpl_target", money: true, lowerIsBetter: true, group: "goals" },
+  { key: "cpa_target", money: true, lowerIsBetter: true, group: "goals" },
+  { key: "deposit_target", money: true, group: "goals" },
+  { key: "ggr_target", money: true, group: "goals" },
 ];
 
-function monthStart() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+/** Month-to-date actuals, summed from the weeks whose Monday falls in the month. */
+function actualsFor(month, weeklyRows) {
+  const weeks = new Set(weeksInMonth(month));
+  const inMonth = weeklyRows.filter(r => weeks.has(r.week_start)).map(deriveWeeklyKpis);
+  const sum = key => inMonth.reduce((total, w) => total + (w[key] ?? 0), 0);
+  const spend = sum("spend");
+  const registrations = sum("registrations");
+  const ftds = sum("ftds");
+  return {
+    monthly_budget: spend,
+    new_registrations: registrations,
+    ftd_count: ftds,
+    cpl_target: registrations > 0 ? spend / registrations : null,
+    cpa_target: ftds > 0 ? spend / ftds : null,
+    deposit_target: sum("depositAmount"),
+    ggr_target: sum("ggr"),
+  };
 }
 
 export default function Settings({ s, lang }) {
+  const [month, setMonth] = useState(currentBudgetMonth());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [goals, setGoals] = useState({});
-  const [savedFlash, setSavedFlash] = useState(false);
+  const [weeklyRows, setWeeklyRows] = useState([]);
   const [saving, setSaving] = useState(false);
-  const period_start = monthStart();
+  const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
     (async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("goals")
-        .select("*")
-        .eq("period_start", period_start)
-        .eq("period_type", "month");
+      const [goalsRes, weeklyRes] = await Promise.all([
+        supabase.from("goals").select("*").eq("period_start", month).eq("period_type", "month"),
+        supabase.from("weekly_kpis").select("*"),
+      ]);
       if (!active) return;
-      if (error) setError(error.message);
+      if (goalsRes.error) setError(goalsRes.error.message);
       else {
         const byKey = {};
-        for (const row of data || []) byKey[row.metric_name] = row.target_value;
+        for (const row of goalsRes.data || []) byKey[row.metric_name] = row.target_value;
         setGoals(byKey);
       }
+      if (!weeklyRes.error) setWeeklyRows(weeklyRes.data || []);
       setLoading(false);
     })();
     return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function updateGoal(key, value) {
-    setGoals(prev => ({ ...prev, [key]: value === "" ? "" : Number(value) }));
-  }
+  }, [month]);
 
   async function saveAll() {
     setSaving(true);
     setError(null);
-    const rows = GOAL_DEFS.map(g => ({
-      period_start, period_type: "month", metric_name: g.key,
-      target_value: goals[g.key] === "" || goals[g.key] == null ? 0 : goals[g.key],
-    }));
-    const { error } = await supabase.from("goals").upsert(rows, { onConflict: "period_start,period_type,metric_name" });
+    const rows = GOAL_DEFS
+      .filter(g => goals[g.key] !== "" && goals[g.key] != null)
+      .map(g => ({
+        period_start: month, period_type: "month", metric_name: g.key,
+        target_value: Number(goals[g.key]) || 0,
+      }));
+    if (rows.length) {
+      const { error: err } = await supabase.from("goals")
+        .upsert(rows, { onConflict: "period_start,period_type,metric_name" });
+      if (err) { setError(err.message); setSaving(false); return; }
+    }
     setSaving(false);
-    if (error) { setError(error.message); return; }
     setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 1400);
+    setTimeout(() => setSavedFlash(false), 2200);
   }
+
+  const actuals = actualsFor(month, weeklyRows);
+  const input = { background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "8px 10px", width: 150, fontSize: 13 };
+  const th = { padding: "11px 16px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 12 };
+  const td = { padding: "9px 16px", fontSize: 13 };
+
+  function attainment(def) {
+    const target = Number(goals[def.key]);
+    const actual = actuals[def.key];
+    if (!target || actual == null) return null;
+    // Under target is the win for cost metrics, over it for volume metrics.
+    const pct = def.lowerIsBetter ? (target / actual) * 100 : (actual / target) * 100;
+    return { pct, good: def.lowerIsBetter ? actual <= target : actual >= target };
+  }
+
+  function renderRows(group) {
+    return GOAL_DEFS.filter(g => g.group === group).map(def => {
+      const att = attainment(def);
+      const actual = actuals[def.key];
+      return (
+        <tr key={def.key}>
+          <td style={{ ...td, fontWeight: 500 }}>
+            {s.cfg.goals[def.key]}
+            {def.lowerIsBetter && <span style={{ color: C.inkFaint, fontSize: 11, marginLeft: 6 }}>({s.cfg.lowerIsBetter})</span>}
+          </td>
+          <td style={{ ...td, padding: "7px 16px" }}>
+            <input
+              type="number"
+              value={goals[def.key] ?? ""}
+              onChange={e => setGoals(prev => ({ ...prev, [def.key]: e.target.value }))}
+              style={input}
+            />
+          </td>
+          <td style={{ ...td, color: C.inkDim }}>
+            {actual == null || actual === 0 ? s.cfg.noActual : (def.money ? fmtDOP(actual) : Math.round(actual).toLocaleString())}
+          </td>
+          <td style={td}>
+            {att == null ? <span style={{ color: C.inkFaint }}>—</span> : (
+              <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 150 }}>
+                <span style={{ flex: 1, background: "#1D222B", borderRadius: 6, height: 7, minWidth: 60 }}>
+                  <span style={{ display: "block", width: `${Math.min(att.pct, 100)}%`, height: "100%", borderRadius: 6, background: att.good ? C.positive : C.negative }} />
+                </span>
+                <span style={{ color: att.good ? C.positive : C.negative, fontSize: 12 }}>{att.pct.toFixed(0)}%</span>
+              </span>
+            )}
+          </td>
+        </tr>
+      );
+    });
+  }
+
+  if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spinner size={22} /></div>;
 
   return (
     <>
-      <SectionHeading title={s.settingsTitle} subtitle={s.settingsSub} />
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: C.inkDim }}>{s.settingsGoals}</div>
-
+      <SectionHeading title={s.settingsTitle} subtitle={s.cfg.goalsSub} />
       {error && <Panel style={{ color: C.negative, marginBottom: 16 }}>{error}</Panel>}
-      {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: 40 }}><Spinner size={22} /></div>
-      ) : (
-        <>
-          <Panel style={{ marginBottom: 20, display: "flex", flexDirection: "column", gap: 12 }}>
-            {GOAL_DEFS.map(g => (
-              <div key={g.key} style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ width: 220, fontSize: 13 }}>{lang === "es" ? g.nameEs : g.nameEn}</div>
-                <input type="number" value={goals[g.key] ?? ""} onChange={e => updateGoal(g.key, e.target.value)} style={{ background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "8px 10px", width: 140, fontSize: 13 }} />
-              </div>
-            ))}
-          </Panel>
-          <button onClick={saveAll} disabled={saving} style={{ padding: "9px 18px", borderRadius: 9, border: "none", cursor: saving ? "default" : "pointer", background: savedFlash ? C.positive : C.accent, color: "#fff", fontSize: 13, fontWeight: 500, opacity: saving ? 0.7 : 1 }}>
-            {savedFlash ? s.saved : s.save}
-          </button>
-        </>
-      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12.5, color: C.inkDim }}>{s.cfg.month}</span>
+        <select value={month} onChange={e => setMonth(e.target.value)}
+          style={{ background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "7px 10px", fontSize: 12.5, textTransform: "capitalize" }}>
+          {monthOptions().map(m => <option key={m} value={m}>{formatMonth(m, lang)}</option>)}
+        </select>
+      </div>
+
+      <SectionHeading title={s.cfg.budgetTitle} subtitle={s.cfg.budgetSub} />
+      <Panel style={{ padding: 4, overflow: "auto", marginBottom: 26 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>{["", s.cfg.target, s.cfg.actual, s.cfg.attainment].map((h, i) => <th key={i} style={th}>{h}</th>)}</tr></thead>
+          <tbody>{renderRows("budget")}</tbody>
+        </table>
+      </Panel>
+
+      <SectionHeading title={s.cfg.goalsTitle} />
+      <Panel style={{ padding: 4, overflow: "auto", marginBottom: 18 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>{["", s.cfg.target, s.cfg.actual, s.cfg.attainment].map((h, i) => <th key={i} style={th}>{h}</th>)}</tr></thead>
+          <tbody>{renderRows("goals")}</tbody>
+        </table>
+      </Panel>
+
+      <button onClick={saveAll} disabled={saving}
+        style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 18px", borderRadius: 9, border: "none", background: savedFlash ? C.positive : C.accent, color: "#fff", fontSize: 13, fontWeight: 500, cursor: saving ? "default" : "pointer", opacity: saving ? 0.7 : 1 }}>
+        {saving ? <Spinner /> : savedFlash ? <Check size={14} /> : null}
+        {savedFlash ? s.cfg.saved : s.cfg.saveAll}
+      </button>
     </>
   );
 }

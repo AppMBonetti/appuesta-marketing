@@ -2,15 +2,16 @@ import { Fragment, useState } from "react";
 import { C } from "../lib/theme";
 import { weekRangeLabel, previousWeek } from "../lib/period";
 import { WEEKLY_KPI_GROUPS, wowChange } from "../lib/metrics";
+import { fmtMoney } from "../lib/currency";
 import { Spinner } from "./ui";
 
 function formatValue(value, format) {
   if (value == null || Number.isNaN(value)) return "—";
   switch (format) {
     case "money":
-      return `DOP ${Number(value).toLocaleString("es-DO", { maximumFractionDigits: 0 })}`;
+      return fmtMoney(value);
     case "money2":
-      return `DOP ${Number(value).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      return fmtMoney(value, { decimals: 2 });
     case "pct":
       return `${(Number(value) * 100).toFixed(2)}%`;
     case "x":

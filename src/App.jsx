@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LayoutGrid, TrendingUp, Users, Repeat, Crown, NotebookPen,
   SlidersHorizontal, UploadCloud,
 } from "lucide-react";
 import { C } from "./lib/theme";
+import { getCurrencyState, loadFxRate, restoreCurrency, setCurrency } from "./lib/currency";
 import { STRINGS } from "./lib/i18n";
 import { useAuth } from "./lib/AuthContext";
 import Login from "./pages/Login";
@@ -45,7 +46,24 @@ export default function App() {
 
 function Dashboard({ lang, setLang, s }) {
   const [tab, setTab] = useState("overview");
+  // Currency lives in module state so every formatter reads it; keeping a copy
+  // here is what re-renders the tree when it changes.
+  const [currency, setCurrencyUi] = useState(() => restoreCurrency());
+  const [fxRate, setFxRate] = useState(null);
   const { session, member, signOut } = useAuth();
+
+  useEffect(() => {
+    let active = true;
+    loadFxRate().then(rate => { if (active) setFxRate(rate); });
+    return () => { active = false; };
+  }, []);
+
+  function switchCurrency(next) {
+    setCurrencyUi(setCurrency(next));
+  }
+
+  const fx = getCurrencyState();
+  const usdReady = fxRate != null || fx.dopPerUsd != null;
 
   const NAV = [
     { id: "overview", label: s.nav.overview, icon: LayoutGrid },
@@ -78,6 +96,28 @@ function Dashboard({ lang, setLang, s }) {
           <div style={{ padding: "0 10px", fontSize: 11, color: C.inkFaint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={session?.user?.email}>
             {member?.name || session?.user?.email}
           </div>
+          <div style={{ display: "flex", background: "transparent", border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}
+               title={usdReady ? `1 USD = ${(fx.dopPerUsd ?? fxRate)?.toFixed(2)} DOP · ${fx.rateDate ?? ""}` : s.currency.noRate}>
+            {["DOP", "USD"].map(code => (
+              <button
+                key={code}
+                onClick={() => switchCurrency(code)}
+                disabled={code === "USD" && !usdReady}
+                style={{
+                  flex: 1, padding: "5px 8px", borderRadius: 7, border: "none",
+                  cursor: code === "USD" && !usdReady ? "not-allowed" : "pointer",
+                  fontSize: 11.5, fontWeight: 600,
+                  background: currency === code ? C.accent : "transparent",
+                  color: currency === code ? "#fff" : (code === "USD" && !usdReady ? C.inkFaint : C.inkDim),
+                }}
+              >{code}</button>
+            ))}
+          </div>
+          {currency === "USD" && usdReady && (
+            <div style={{ padding: "0 10px", fontSize: 10.5, color: C.inkFaint }}>
+              1 USD = {(fx.dopPerUsd ?? fxRate)?.toFixed(2)} DOP
+            </div>
+          )}
           <button onClick={() => setLang(l => l === "es" ? "en" : "es")} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px", borderRadius: 9, border: `1px solid ${C.panelBorder}`, background: "transparent", color: C.inkDim, fontSize: 12.5, cursor: "pointer" }}>🌐 {lang === "es" ? "Español" : "English"} · {s.langToggle}</button>
           <button onClick={signOut} style={{ width: "100%", padding: "7px 10px", borderRadius: 9, border: "none", background: "transparent", color: C.inkFaint, fontSize: 12, cursor: "pointer" }}>{s.signOut}</button>
         </div>

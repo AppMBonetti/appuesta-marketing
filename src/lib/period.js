@@ -135,3 +135,15 @@ export function weekRangeLabel(weekISO, lang) {
     : `${dt.getUTCMonth() + 1}/${dt.getUTCDate()}`);
   return `${fmt(start)} - ${fmt(end)}`;
 }
+
+export function addDays(isoDate, days) {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** "10 ago – 23 ago 2026" — the exact span a set of figures covers. */
+export function dateRangeLabel(startISO, endISO, lang) {
+  if (!startISO || !endISO) return "";
+  const year = endISO.slice(0, 4);
+  return `${formatWeek(startISO, lang)} – ${formatWeek(endISO, lang)} ${year}`;
+}
