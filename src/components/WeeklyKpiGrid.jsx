@@ -128,7 +128,21 @@ export default function WeeklyKpiGrid({ s, lang, weeks, rowsByWeek, onEditSpend,
                         ) : savingWeek === week && row.editable ? (
                           <Spinner />
                         ) : (
-                          formatValue(current, row.format)
+                          <>
+                            {formatValue(current, row.format)}
+                            {row.coverageOf && current != null && (() => {
+                              const known = rowsByWeek[week]?.[row.coverageCount];
+                              const total = rowsByWeek[week]?.[row.coverageOf];
+                              if (known == null || total == null || known >= total) return null;
+                              // Partial coverage must be visible, or an incomplete
+                              // sum gets read as the week's full FTD revenue.
+                              return (
+                                <span title={s.wk.coverageHint} style={{ color: C.negative, fontSize: 10.5, marginLeft: 5 }}>
+                                  {known}/{total}
+                                </span>
+                              );
+                            })()}
+                          </>
                         )}
                       </td>,
                       <td

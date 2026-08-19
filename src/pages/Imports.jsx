@@ -124,6 +124,13 @@ export default function Imports({ s, lang }) {
         const { error: snapErr } = await supabase.rpc("snapshot_players", { snapshot_day: localDay() });
         if (snapErr) throw snapErr;
 
+        // Recover first-deposit amounts InTarget doesn't export: exact for
+        // single-deposit players, and from the 0 -> 1 snapshot crossing for
+        // everyone who converts from here on. Runs after the snapshot so
+        // today's crossing is already visible to it.
+        const { error: ftdErr } = await supabase.rpc("derive_first_deposit_amounts");
+        if (ftdErr) throw ftdErr;
+
         setPhase(source, "done", { rowCount: players.length, unmatchedHeaders });
       } else {
         const { bets, unmatchedHeaders, unknownStatuses, coverage } = await parseAltenarFile(file);
