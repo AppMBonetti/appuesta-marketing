@@ -9,6 +9,7 @@ import { deriveWeeklyKpis, wowChange } from "../lib/metrics";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
 import { fmtMoney } from "../lib/currency";
 import SparkTile from "../components/SparkTile";
+import CoverageBar from "../components/CoverageBar";
 
 const WEEK_RANGES = [4, 8, 12, 0];  // 0 = every week since launch
 
@@ -52,8 +53,13 @@ export default function Overview({ s, lang }) {
   // The exact span on screen, so a tile is never read against an unknown period.
   const firstWeek = shown[0]?.week;
   const lastWeek = shown[shown.length - 1]?.week;
-  const coveredRange = firstWeek && lastWeek
-    ? dateRangeLabel(firstWeek, addDays(lastWeek, 6), lang)
+  // The last week is usually still running, so the label must not claim data
+  // through a date that hasn't happened.
+  const today = new Date().toISOString().slice(0, 10);
+  const lastWeekEnd = lastWeek ? addDays(lastWeek, 6) : null;
+  const coveredEnd = lastWeekEnd && lastWeekEnd > today ? today : lastWeekEnd;
+  const coveredRange = firstWeek && coveredEnd
+    ? dateRangeLabel(firstWeek, coveredEnd, lang)
     : "";
 
   const chartData = shown.map(w => ({
@@ -72,6 +78,8 @@ export default function Overview({ s, lang }) {
         title={s.ov.heroTitle}
         subtitle={`${s.ov.heroSub} · ${coveredRange}`}
       />
+
+      <CoverageBar s={s} lang={lang} weekEnd={lastWeekEnd} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <span style={{ fontSize: 12.5, color: C.inkDim }}>{s.ov.range}</span>
