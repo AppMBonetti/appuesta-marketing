@@ -8,6 +8,20 @@ export const STRINGS = {
     trendTitle: "Registros vs. FTD",
     acqTitle: "Adquisición y canales", acqSub: "GA4 — propiedad Appuesta RD, vía Supermetrics",
     acqNote: "⚠ Conversiones GA4 aún no configuradas — mostrará 0 hasta activar eventos de conversión.",
+    ov: {
+      heroTitle: "Resumen", heroSub: "Tendencia semanal desde el inicio de operaciones",
+      trendRegFtd: "Registros vs. FTDs por semana", trendCost: "Costo de adquisición por semana",
+      trendRevenue: "GGR y depósitos por semana",
+      lastWeeks: "últimas {n} semanas", noWeeks: "Aún no hay semanas completas para comparar.",
+      legendReg: "Registros", legendFtd: "FTDs", legendCpl: "CPL", legendCpa: "CPA (FTD)",
+      legendGgr: "GGR", legendDeposits: "Depósitos",
+    },
+    tierDrill: {
+      hint: "Haz clic en un nivel para ver sus jugadores",
+      players: "jugadores", noPlayers: "Ningún jugador en este nivel todavía.",
+      cols: { player: "Jugador", deposits: "Total depositado", count: "# Depósitos", lastDeposit: "Último depósito", ggr: "GGR", wagered: "Apostado 90d", progress: "Progreso al siguiente nivel" },
+      toNext: "para", maxTier: "Nivel máximo alcanzado", never: "Nunca",
+    },
     coverage: {
       title: "Cobertura de datos de apuestas", sub: "Días sin apuestas recibidas desde el inicio de operaciones",
       allCovered: "Todos los días tienen apuestas recibidas.",
@@ -104,6 +118,20 @@ export const STRINGS = {
     trendTitle: "Registrations vs. FTD",
     acqTitle: "Acquisition & channels", acqSub: "GA4 — Appuesta RD property, via Supermetrics",
     acqNote: "⚠ GA4 conversions not configured yet — will show 0 until conversion events are set up.",
+    ov: {
+      heroTitle: "Overview", heroSub: "Weekly trend since operations started",
+      trendRegFtd: "Registrations vs. FTDs by week", trendCost: "Acquisition cost by week",
+      trendRevenue: "GGR and deposits by week",
+      lastWeeks: "last {n} weeks", noWeeks: "No complete weeks to compare yet.",
+      legendReg: "Registrations", legendFtd: "FTDs", legendCpl: "CPL", legendCpa: "CPA (FTD)",
+      legendGgr: "GGR", legendDeposits: "Deposits",
+    },
+    tierDrill: {
+      hint: "Click a tier to see its players",
+      players: "players", noPlayers: "No players in this tier yet.",
+      cols: { player: "Player", deposits: "Total deposited", count: "# Deposits", lastDeposit: "Last deposit", ggr: "GGR", wagered: "Wagered 90d", progress: "Progress to next tier" },
+      toNext: "to reach", maxTier: "Top tier reached", never: "Never",
+    },
     coverage: {
       title: "Bet data coverage", sub: "Days with no bets received since operations started",
       allCovered: "Every day has bets received.",
