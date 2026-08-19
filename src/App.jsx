@@ -7,6 +7,7 @@ import { C } from "./lib/theme";
 import { getCurrencyState, loadFxRate, restoreCurrency, setCurrency } from "./lib/currency";
 import { STRINGS } from "./lib/i18n";
 import { useAuth } from "./lib/AuthContext";
+import { supabaseConfigError } from "./lib/supabaseClient";
 import Login from "./pages/Login";
 import NotAuthorized from "./pages/NotAuthorized";
 import { Spinner } from "./components/ui";
@@ -24,6 +25,19 @@ export default function App() {
   const [lang, setLang] = useState("es");
   const { status } = useAuth();
   const s = STRINGS[lang];
+
+  // Without credentials nothing can load, so say so plainly rather than
+  // leaving a permanent spinner or an empty dashboard to be misread as "no data".
+  if (supabaseConfigError) {
+    return (
+      <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Inter', -apple-system, sans-serif" }}>
+        <div style={{ maxWidth: 460, textAlign: "center", color: C.ink }}>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>{s.configErrorTitle}</div>
+          <div style={{ fontSize: 13, color: C.inkDim, lineHeight: 1.65 }}>{supabaseConfigError}</div>
+        </div>
+      </div>
+    );
+  }
 
   if (status === "loading" || status === "checking_membership") {
     return (
