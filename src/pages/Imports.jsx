@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { SectionHeading, Panel, Spinner } from "../components/ui";
 import DataCoverage from "../components/DataCoverage";
+import DataHealth from "../components/DataHealth";
 import { parseIntargetFile } from "../lib/importers/intarget";
 import { parseAltenarFile } from "../lib/importers/altenar";
 import { parseGa4File } from "../lib/importers/ga4";
@@ -243,6 +244,8 @@ export default function Imports({ s, lang }) {
       <div style={{ background: "#132A24", border: `1px solid ${C.positive}30`, borderRadius: 12, padding: "10px 16px", fontSize: 12, color: C.positive, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
         <CheckCircle2 size={14} /> {s.cadenceNote}
       </div>
+
+      <DataHealth s={s} />
 
       <DataCoverage s={s} lang={lang} />
 

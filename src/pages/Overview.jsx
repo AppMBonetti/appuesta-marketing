@@ -4,22 +4,24 @@ import {
 } from "recharts";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
-import { formatWeek } from "../lib/period";
+import { formatWeek, addDays, dateRangeLabel } from "../lib/period";
 import { deriveWeeklyKpis, wowChange } from "../lib/metrics";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
+import { fmtMoney } from "../lib/currency";
 import SparkTile from "../components/SparkTile";
 
-const WEEKS_SHOWN = 8;
+const WEEK_RANGES = [4, 8, 12, 0];  // 0 = every week since launch
 
 const fmtInt = v => (v == null ? "—" : Math.round(v).toLocaleString());
 const fmtPct = v => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
 const fmtX = v => (v == null ? "—" : `${v.toFixed(2)}x`);
-const fmtMoney2 = v => (v == null ? "—" : `DOP ${Number(v).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+const fmtMoney2 = v => fmtMoney(v, { decimals: 2 });
 
 export default function Overview({ s, lang }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [weeks, setWeeks] = useState([]);
+  const [range, setRange] = useState(8);
 
   useEffect(() => {
     let active = true;
@@ -38,7 +40,7 @@ export default function Overview({ s, lang }) {
   if (error) return <Panel style={{ color: C.negative }}>{error}</Panel>;
   if (!weeks.length) return (<><SectionHeading title={s.ov.heroTitle} subtitle={s.ov.heroSub} /><EmptyState s={s} /></>);
 
-  const shown = weeks.slice(-WEEKS_SHOWN);
+  const shown = range === 0 ? weeks : weeks.slice(-range);
   const latest = shown[shown.length - 1] || {};
   const prior = shown[shown.length - 2] || {};
   const seriesOf = key => shown.map(w => w[key]);
@@ -46,6 +48,13 @@ export default function Overview({ s, lang }) {
     label, value: format(latest[key]), change: wowChange(latest[key], prior[key]),
     better, series: seriesOf(key), accent,
   });
+
+  // The exact span on screen, so a tile is never read against an unknown period.
+  const firstWeek = shown[0]?.week;
+  const lastWeek = shown[shown.length - 1]?.week;
+  const coveredRange = firstWeek && lastWeek
+    ? dateRangeLabel(firstWeek, addDays(lastWeek, 6), lang)
+    : "";
 
   const chartData = shown.map(w => ({
     label: formatWeek(w.week, lang),
@@ -61,8 +70,23 @@ export default function Overview({ s, lang }) {
     <>
       <SectionHeading
         title={s.ov.heroTitle}
-        subtitle={`${s.ov.heroSub} · ${s.ov.lastWeeks.replace("{n}", String(shown.length))}`}
+        subtitle={`${s.ov.heroSub} · ${coveredRange}`}
       />
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12.5, color: C.inkDim }}>{s.ov.range}</span>
+        <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
+          {WEEK_RANGES.map(n => (
+            <button key={n} onClick={() => setRange(n)}
+              style={{ padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, background: range === n ? C.accent : "transparent", color: range === n ? "#fff" : C.inkDim }}>
+              {n === 0 ? s.ov.weeksAll : s.ov[`weeks${n}`]}
+            </button>
+          ))}
+        </div>
+        <span style={{ fontSize: 12, color: C.inkFaint }}>
+          {s.ov.lastWeeks.replace("{n}", String(shown.length))}
+        </span>
+      </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
         <SparkTile {...tile("sessions", s.ga4Kpi.sessions, fmtInt, "up", "#6E9BF2")} />

@@ -1,5 +1,6 @@
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { C } from "../lib/theme";
+import { fmtMoney } from "../lib/currency";
 
 export function KpiCard({ icon: Icon, label, value, delta, deltaGood = true }) {
   return (
@@ -67,9 +68,10 @@ export function Spinner({ size = 14 }) {
   );
 }
 
+// Kept as the app-wide money formatter; currency and conversion live in
+// lib/currency so switching to USD updates every figure at once.
 export function fmtDOP(n) {
-  if (n == null || n === "") return "—";
-  return "DOP " + Number(n).toLocaleString("es-DO", { maximumFractionDigits: 0 });
+  return fmtMoney(n);
 }
 
 export function deltaOf(curr, prev) {

@@ -1,10 +1,37 @@
 import { useEffect, useState } from "react";
-import { ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronRight, ChevronDown, Download } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
+import { downloadCsv } from "../lib/csv";
 
 const TIER_COLORS = ["#8B93A3", "#B0555F", "#C9424F", "#E4022B", "#F03A57", "#F97A8F"];
+
+// Raw values, not display-formatted ones: a CRM import wants 295986.87, not
+// "DOP 295,987", and dates in ISO so any system parses them the same way.
+const CSV_COLUMNS = [
+  { label: "player_id", value: p => p.id },
+  { label: "name", value: p => p.name },
+  { label: "email", value: p => p.email },
+  { label: "vip_tier", value: p => p.vip_tier },
+  { label: "registered_at", value: p => p.registered_at },
+  { label: "first_deposit_date", value: p => p.first_deposit_date },
+  { label: "last_deposit_date", value: p => p.last_deposit_date },
+  { label: "total_deposit_amount_dop", value: p => p.total_deposit_amount },
+  { label: "total_deposit_count", value: p => p.total_deposit_count },
+  { label: "total_ggr_dop", value: p => p.total_ggr_sportsbook },
+  { label: "total_withdrawal_dop", value: p => p.total_withdrawal_amount },
+  { label: "wagered_90d_dop", value: p => p.trailing_wager },
+  { label: "next_tier", value: p => p.next_tier },
+  { label: "wager_to_next_tier_dop", value: p => p.wager_to_next },
+  { label: "progress_to_next_pct", value: p => (p.progress_to_next == null ? "" : Math.round(p.progress_to_next * 100)) },
+];
+
+function exportPlayers(rows, label) {
+  const stamp = new Date().toISOString().slice(0, 10);
+  const slug = label.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-");
+  downloadCsv(`appuesta-${slug}-${stamp}.csv`, CSV_COLUMNS, rows);
+}
 
 function fmtDate(value, s, lang) {
   if (!value) return s.tierDrill.never;
@@ -79,7 +106,15 @@ export default function Vip({ s, lang }) {
       {!loading && !error && (
         !hasData ? <EmptyState s={s} /> : (
           <>
-            <p style={{ color: C.inkFaint, fontSize: 12, margin: "0 0 12px" }}>{s.tierDrill.hint}</p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+              <p style={{ color: C.inkFaint, fontSize: 12, margin: 0 }}>{s.tierDrill.hint}</p>
+              <button
+                onClick={() => exportPlayers(players, "todos")}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5, cursor: "pointer" }}
+              >
+                <Download size={13} /> {s.tierDrill.exportAll} ({players.length})
+              </button>
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {rows.map(t => {
                 const count = Number(t.players);
@@ -115,6 +150,15 @@ export default function Vip({ s, lang }) {
                         {tierPlayers.length === 0 ? (
                           <div style={{ padding: "20px 16px", fontSize: 12.5, color: C.inkDim }}>{s.tierDrill.noPlayers}</div>
                         ) : (
+                          <>
+                          <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 12px 4px" }}>
+                            <button
+                              onClick={() => exportPlayers(tierPlayers, t.tier_name)}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12, cursor: "pointer" }}
+                            >
+                              <Download size={12} /> {s.tierDrill.exportTier} ({tierPlayers.length})
+                            </button>
+                          </div>
                           <table style={{ width: "100%", borderCollapse: "collapse" }}>
                             <thead>
                               <tr>
@@ -139,6 +183,7 @@ export default function Vip({ s, lang }) {
                               ))}
                             </tbody>
                           </table>
+                          </>
                         )}
                       </div>
                     )}
