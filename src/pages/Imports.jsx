@@ -3,8 +3,10 @@ import { UploadCloud, CheckCircle2, FileSpreadsheet, AlertCircle } from "lucide-
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { SectionHeading, Panel, Spinner } from "../components/ui";
+import DataCoverage from "../components/DataCoverage";
 import { parseIntargetFile } from "../lib/importers/intarget";
 import { parseAltenarFile } from "../lib/importers/altenar";
+import { parseGa4File } from "../lib/importers/ga4";
 import { upsertInChunks } from "../lib/importers/parseWorkbook";
 
 // bets.external_user_id has a FK to players.id — if a bet references a player
@@ -44,6 +46,7 @@ function toLocalDay(iso) {
 const CARD_DEFS = [
   { source: "InTarget", labelKey: "intargetCard" },
   { source: "Altenar", labelKey: "altenarCard" },
+  { source: "GA4", labelKey: "ga4Card" },
 ];
 
 export default function Imports({ s, lang }) {
@@ -51,7 +54,7 @@ export default function Imports({ s, lang }) {
   const [lastBySource, setLastBySource] = useState({});
   const [loadingLog, setLoadingLog] = useState(true);
   const [cardState, setCardState] = useState({}); // source -> { phase, error, result }
-  const fileInputs = { InTarget: useRef(null), Altenar: useRef(null) };
+  const fileInputs = { InTarget: useRef(null), Altenar: useRef(null), GA4: useRef(null) };
 
   async function loadLog() {
     setLoadingLog(true);
@@ -82,7 +85,22 @@ export default function Imports({ s, lang }) {
     try {
       setPhase(source, "parsing");
 
-      if (source === "InTarget") {
+      if (source === "GA4") {
+        const { rows, unmatchedHeaders, coverage } = await parseGa4File(file);
+        if (rows.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
+
+        setPhase(source, "importing");
+        await upsertInChunks(supabase, "ga4_channel_daily", rows, "date,channel");
+
+        setPhase(source, "logging");
+        const { error: logErr } = await supabase.from("data_imports").insert({
+          source, filename: file.name, row_count: rows.length, status: "success",
+          period_start: coverage.start, period_end: coverage.end,
+        });
+        if (logErr) throw logErr;
+
+        setPhase(source, "done", { rowCount: rows.length, unmatchedHeaders });
+      } else if (source === "InTarget") {
         const { players, unmatchedHeaders, coverage } = await parseIntargetFile(file);
         if (players.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
 
@@ -108,7 +126,7 @@ export default function Imports({ s, lang }) {
 
         setPhase(source, "done", { rowCount: players.length, unmatchedHeaders });
       } else {
-        const { bets, unmatchedHeaders, coverage } = await parseAltenarFile(file);
+        const { bets, unmatchedHeaders, unknownStatuses, coverage } = await parseAltenarFile(file);
         if (bets.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
 
         setPhase(source, "importing");
@@ -126,7 +144,7 @@ export default function Imports({ s, lang }) {
         const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
         if (rpcErr) throw rpcErr;
 
-        setPhase(source, "done", { rowCount: bets.length, orphaned, unmatchedHeaders });
+        setPhase(source, "done", { rowCount: bets.length, orphaned, unmatchedHeaders, unknownStatuses });
       }
 
       loadLog();
@@ -188,6 +206,14 @@ export default function Imports({ s, lang }) {
                     {state.orphaned > 0 && (lang === "es"
                       ? ` — ${state.orphaned} sin jugador asociado aún`
                       : ` — ${state.orphaned} without a matching player yet`)}
+                    {state.unknownStatuses?.length > 0 && (
+                      <div style={{ color: C.negative, marginTop: 4 }}>
+                        {lang === "es"
+                          ? "Estados de apuesta no reconocidos (revisar si cuentan como apuesta): "
+                          : "Unrecognized bet statuses (check whether they count as wagering): "}
+                        {state.unknownStatuses.join(", ")}
+                      </div>
+                    )}
                     {state.unmatchedHeaders?.length > 0 && (
                       <div style={{ color: C.inkFaint, marginTop: 4 }}>
                         {lang === "es" ? "Columnas no reconocidas: " : "Unrecognized columns: "}{state.unmatchedHeaders.join(", ")}
@@ -210,6 +236,8 @@ export default function Imports({ s, lang }) {
       <div style={{ background: "#132A24", border: `1px solid ${C.positive}30`, borderRadius: 12, padding: "10px 16px", fontSize: 12, color: C.positive, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
         <CheckCircle2 size={14} /> {s.cadenceNote}
       </div>
+
+      <DataCoverage s={s} lang={lang} />
 
       <div style={{ fontSize: 13, color: C.inkDim, marginBottom: 10 }}>{s.importHistory}</div>
       {loadingLog ? (

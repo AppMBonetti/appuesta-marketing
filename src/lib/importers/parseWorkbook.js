@@ -73,6 +73,11 @@ export function toNumber(rawValue) {
   const lastDot = digits.lastIndexOf(".");
   const lastComma = digits.lastIndexOf(",");
 
+  // A thousands group is never written as a bare leading zero, so "0.155" and
+  // "0,155" are decimals in either locale — without this, GA4's fractional
+  // rates (0.155) would parse as 155 under the three-digit grouping rule below.
+  const leadingZero = /^0[.,]/.test(digits);
+
   let decimalSep = null;
   if (lastDot !== -1 && lastComma !== -1) {
     // Both present: whichever comes last is the decimal separator.
@@ -81,10 +86,10 @@ export function toNumber(rawValue) {
     // Only commas. A single comma with exactly 3 digits after it reads as a
     // thousands group (1,234); anything else is a decimal comma (842,38 / 12,5).
     const trailing = digits.length - lastComma - 1;
-    decimalSep = trailing === 3 && digits.indexOf(",") === lastComma ? null : ",";
+    decimalSep = !leadingZero && trailing === 3 && digits.indexOf(",") === lastComma ? null : ",";
   } else if (lastDot !== -1) {
     const trailing = digits.length - lastDot - 1;
-    decimalSep = trailing === 3 && digits.indexOf(".") === lastDot ? null : ".";
+    decimalSep = !leadingZero && trailing === 3 && digits.indexOf(".") === lastDot ? null : ".";
   }
 
   let intPart = digits;
@@ -99,6 +104,43 @@ export function toNumber(rawValue) {
   const n = parseFloat(`${intPart || "0"}${fracPart ? `.${fracPart}` : ""}`);
   if (isNaN(n)) return null;
   return negative ? -Math.abs(n) : n;
+}
+
+/**
+ * Parses a calendar date to a plain YYYY-MM-DD string. Unlike `toISOTimestamp`
+ * this never round-trips through a timezone, so a date-only cell can't shift a
+ * day when the browser runs at a negative UTC offset.
+ */
+export function toISODateOnly(rawValue) {
+  const value = unwrapCellValue(rawValue);
+  if (value == null || value === "") return null;
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
+  if (typeof value === "number") {
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    return new Date(excelEpoch + value * 86400000).toISOString().slice(0, 10);
+  }
+
+  const str = String(value).trim();
+  if (!str) return null;
+
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  // Supermetrics sometimes emits GA4 dates in the API's compact form.
+  const compact = str.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compact) return `${compact[1]}-${compact[2]}-${compact[3]}`;
+
+  const dayFirst = str.match(DAY_FIRST_RE);
+  if (dayFirst) {
+    const [, d, m, y] = dayFirst;
+    const day = Number(d), month = Number(m);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${y}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  const parsed = new Date(str);
+  return isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
 export function toText(rawValue) {
@@ -160,15 +202,151 @@ function rowsFromDelimitedText(text) {
   return cells.filter(r => r.some(c => String(c).trim() !== ""));
 }
 
+const XML_ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+
+function decodeXml(text) {
+  return text.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/g, (match, entity) => {
+    if (entity[0] === "#") {
+      const hex = entity[1] === "x" || entity[1] === "X";
+      const code = parseInt(hex ? entity.slice(2) : entity.slice(1), hex ? 16 : 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+    }
+    return XML_ENTITIES[entity] ?? match;
+  });
+}
+
+/**
+ * Iterates elements by local name, ignoring any namespace prefix, yielding
+ * [attributes, innerXml]. Only used for OOXML parts, whose row/cell elements
+ * never nest inside themselves.
+ */
+function* xmlElements(xml, name) {
+  const open = new RegExp(`<(?:[A-Za-z_][\\w.-]*:)?${name}(\\s[^>]*?)?(/)?>`, "g");
+  const close = new RegExp(`</(?:[A-Za-z_][\\w.-]*:)?${name}>`, "g");
+  let match;
+  while ((match = open.exec(xml))) {
+    const attrs = match[1] || "";
+    if (match[2]) { yield [attrs, ""]; continue; }
+    close.lastIndex = open.lastIndex;
+    const end = close.exec(xml);
+    yield [attrs, end ? xml.slice(open.lastIndex, end.index) : ""];
+    if (end) open.lastIndex = end.index + end[0].length;
+  }
+}
+
+function xmlAttr(attrs, name) {
+  const m = attrs.match(new RegExp(`\\b${name}="([^"]*)"`));
+  return m ? decodeXml(m[1]) : null;
+}
+
+/** "BC12" -> 54 (zero-based column index). */
+function columnIndexFromRef(ref) {
+  const letters = (ref || "").match(/^[A-Z]+/);
+  if (!letters) return null;
+  let index = 0;
+  for (const ch of letters[0]) index = index * 26 + (ch.charCodeAt(0) - 64);
+  return index - 1;
+}
+
+/**
+ * Minimal xlsx reader used when ExcelJS refuses a workbook. Altenar's export
+ * writes every element with an `x:` namespace prefix (`<x:sheets><x:sheet/>`),
+ * which is valid OOXML but leaves ExcelJS's tag-name matching with no sheets at
+ * all — it then throws on `workbook.sheets`. Matching by local name reads those
+ * files, and dates/numbers stay raw for the field converters to interpret.
+ */
+async function readSheetRowsNamespaceTolerant(file) {
+  const { default: JSZip } = await import("jszip");
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const readPart = async (path) => {
+    const entry = zip.file(path.replace(/^\//, ""));
+    return entry ? entry.async("string") : null;
+  };
+
+  const sharedStrings = [];
+  const sharedXml = await readPart("xl/sharedStrings.xml");
+  if (sharedXml) {
+    for (const [, si] of xmlElements(sharedXml, "si")) {
+      let text = "";
+      for (const [, t] of xmlElements(si, "t")) text += t;
+      sharedStrings.push(decodeXml(text));
+    }
+  }
+
+  // Resolve the first sheet through the workbook's relationships, falling back
+  // to the conventional path when the parts are missing or unreadable.
+  let sheetPath = "xl/worksheets/sheet1.xml";
+  const workbookXml = await readPart("xl/workbook.xml");
+  const relsXml = await readPart("xl/_rels/workbook.xml.rels");
+  if (workbookXml && relsXml) {
+    const firstSheet = [...xmlElements(workbookXml, "sheet")][0];
+    const relId = firstSheet ? xmlAttr(firstSheet[0], "r:id") || xmlAttr(firstSheet[0], "id") : null;
+    if (relId) {
+      for (const [attrs] of xmlElements(relsXml, "Relationship")) {
+        if (xmlAttr(attrs, "Id") === relId) {
+          const target = xmlAttr(attrs, "Target");
+          if (target) sheetPath = target.replace(/^\//, "").replace(/^(?!xl\/)/, "xl/");
+          break;
+        }
+      }
+    }
+  }
+
+  const sheetXml = await readPart(sheetPath);
+  if (!sheetXml) throw new Error("No worksheet found in file");
+
+  const rows = [];
+  for (const [, rowXml] of xmlElements(sheetXml, "row")) {
+    const cells = [];
+    let column = 0;
+    for (const [attrs, cellXml] of xmlElements(rowXml, "c")) {
+      const ref = xmlAttr(attrs, "r");
+      const index = ref != null ? columnIndexFromRef(ref) : null;
+      column = index == null ? column : index;
+
+      const type = xmlAttr(attrs, "t");
+      let value = null;
+      if (type === "inlineStr") {
+        let text = "";
+        for (const [, t] of xmlElements(cellXml, "t")) text += t;
+        value = decodeXml(text);
+      } else {
+        const raw = [...xmlElements(cellXml, "v")][0]?.[1];
+        if (raw != null && raw !== "") {
+          const decoded = decodeXml(raw);
+          if (type === "s") value = sharedStrings[Number(decoded)] ?? null;
+          else if (type === "b") value = decoded === "1";
+          else if (type === "str" || type === "e") value = decoded;
+          else {
+            const numeric = Number(decoded);
+            value = Number.isFinite(numeric) ? numeric : decoded;
+          }
+        }
+      }
+      cells[column] = value;
+      column += 1;
+    }
+    if (cells.some(c => c != null && String(c).trim() !== "")) rows.push(cells);
+  }
+  return rows;
+}
+
 async function readSheetRows(file) {
   const isCsv = /\.(csv|tsv|txt)$/i.test(file.name || "");
   if (isCsv) return rowsFromDelimitedText(await file.text());
 
-  const { default: ExcelJS } = await import("exceljs");
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(await file.arrayBuffer());
-  const worksheet = workbook.worksheets[0];
-  if (!worksheet) throw new Error("No worksheet found in file");
+  let worksheet;
+  try {
+    const { default: ExcelJS } = await import("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await file.arrayBuffer());
+    worksheet = workbook.worksheets[0];
+  } catch {
+    // ExcelJS rejects namespace-prefixed workbooks (Altenar's exporter writes
+    // them); the tolerant reader handles those rather than failing the import.
+    return readSheetRowsNamespaceTolerant(file);
+  }
+  if (!worksheet) return readSheetRowsNamespaceTolerant(file);
 
   const rows = [];
   worksheet.eachRow({ includeEmpty: false }, row => {
