@@ -58,6 +58,11 @@ export default function Overview({ s, lang }) {
   const [weeks, setWeeks] = useState([]);
   const [mode, setMode] = useState("month");
   const [selection, setSelection] = useState({ week: null, month: null, start: null, end: null });
+  // A custom span is answered at day grain by the database rather than by
+  // rounding to whole weeks — "the 10th to the 18th" has to mean those days,
+  // which is how the figures get checked against the backoffice.
+  const [rangeRow, setRangeRow] = useState(null);
+  const [rangeBusy, setRangeBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -82,6 +87,31 @@ export default function Overview({ s, lang }) {
     return () => { active = false; };
   }, []);
 
+  const { start: customStart, end: customEnd } = selection;
+  useEffect(() => {
+    if (mode !== "custom" || !customStart || !customEnd || customStart > customEnd) {
+      setRangeRow(null);
+      return undefined;
+    }
+    let active = true;
+    setRangeBusy(true);
+    (async () => {
+      // The comparison is the same number of days immediately before the range.
+      const days = Math.round((new Date(customEnd) - new Date(customStart)) / 86400000) + 1;
+      const priorEnd = addDays(customStart, -1);
+      const [now, before] = await Promise.all([
+        supabase.rpc("kpis_for_range", { p_start: customStart, p_end: customEnd }),
+        supabase.rpc("kpis_for_range", { p_start: addDays(priorEnd, -(days - 1)), p_end: priorEnd }),
+      ]);
+      if (!active) return;
+      if (now.error) setError(now.error.message);
+      const first = res => (Array.isArray(res.data) ? res.data[0] || null : res.data);
+      setRangeRow({ current: first(now), prior: before.error ? null : first(before), days });
+      setRangeBusy(false);
+    })();
+    return () => { active = false; };
+  }, [mode, customStart, customEnd]);
+
   if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spinner size={22} /></div>;
   if (error) return <Panel style={{ color: C.negative }}>{error}</Panel>;
   if (!weeks.length) return (<><SectionHeading title={s.ov.heroTitle} subtitle={s.ov.heroSub} /><EmptyState s={s} /></>);
@@ -97,8 +127,13 @@ export default function Overview({ s, lang }) {
   const priorStart = firstIndex - shown.length;
   const priorWeeks = shown.length && priorStart >= 0 ? weeks.slice(priorStart, firstIndex) : [];
 
-  const current = shown.length ? deriveWeeklyKpis(aggregateWeeklyRows(shown.map(w => w.raw))) : {};
-  const prior = priorWeeks.length ? deriveWeeklyKpis(aggregateWeeklyRows(priorWeeks.map(w => w.raw))) : {};
+  const exactRange = mode === "custom" && rangeRow?.current;
+  const current = exactRange
+    ? deriveWeeklyKpis(rangeRow.current)
+    : (shown.length ? deriveWeeklyKpis(aggregateWeeklyRows(shown.map(w => w.raw))) : {});
+  const prior = exactRange
+    ? (rangeRow.prior ? deriveWeeklyKpis(rangeRow.prior) : {})
+    : (priorWeeks.length ? deriveWeeklyKpis(aggregateWeeklyRows(priorWeeks.map(w => w.raw))) : {});
   const seriesOf = key => shown.map(w => w[key]);
   const tile = (key, label, format, better, accent) => ({
     label, value: format(current[key]), change: wowChange(current[key], prior[key]),
@@ -113,9 +148,19 @@ export default function Overview({ s, lang }) {
   const today = new Date().toISOString().slice(0, 10);
   const lastWeekEnd = lastWeek ? addDays(lastWeek, 6) : null;
   const coveredEnd = lastWeekEnd && lastWeekEnd > today ? today : lastWeekEnd;
-  const coveredRange = firstWeek && coveredEnd
-    ? dateRangeLabel(firstWeek, coveredEnd, lang)
-    : "";
+  const coveredRange = exactRange
+    ? dateRangeLabel(rangeRow.current.range_start, rangeRow.current.range_end > today ? today : rangeRow.current.range_end, lang)
+    : (firstWeek && coveredEnd ? dateRangeLabel(firstWeek, coveredEnd, lang) : "");
+
+  // Two figures cannot be produced for an arbitrary span and say so rather than
+  // approximating: deposits need a snapshot taken before the range to subtract
+  // from, and spend is captured per week so it is split across that week's days.
+  const rangeCaveats = exactRange
+    ? [
+        rangeRow.current.deposit_amount == null ? s.ov.noDepositBaseline : null,
+        rangeRow.current.spend_prorated ? s.ov.spendProrated : null,
+      ].filter(Boolean)
+    : [];
 
   const chartData = shown.map(w => ({
     label: formatWeek(w.week, lang),
@@ -175,17 +220,22 @@ export default function Overview({ s, lang }) {
         )}
 
         <span style={{ fontSize: 12, color: C.inkFaint }}>
-          {priorWeeks.length
-            ? (shown.length === 1 ? s.ov.comparedToWeek : s.ov.comparedTo.replace("{n}", String(priorWeeks.length)))
-            : s.ov.noPriorPeriod}
+          {rangeBusy ? <Spinner size={13} />
+            : exactRange
+              ? (rangeRow.prior ? s.ov.comparedToDays.replace("{n}", String(rangeRow.days)) : s.ov.noPriorPeriod)
+              : priorWeeks.length
+                ? (shown.length === 1 ? s.ov.comparedToWeek : s.ov.comparedTo.replace("{n}", String(priorWeeks.length)))
+                : s.ov.noPriorPeriod}
         </span>
       </div>
 
       <div style={{ fontSize: 11.5, color: C.inkFaint, marginBottom: 16, lineHeight: 1.5 }}>
-        {mode === "week" ? s.ov.wholeWeeksNote : `${s.ov.wholeWeeksNote} ${s.ov.weekGrainOnly}`}
+        {mode === "custom"
+          ? [s.ov.exactDaysNote, ...rangeCaveats].join(" ")
+          : mode === "week" ? s.ov.wholeWeeksNote : `${s.ov.wholeWeeksNote} ${s.ov.weekGrainOnly}`}
       </div>
 
-      {!shown.length && <Panel style={{ marginBottom: 16, color: C.inkDim, fontSize: 12.5 }}>{s.ov.noWeeks}</Panel>}
+      {!shown.length && !exactRange && <Panel style={{ marginBottom: 16, color: C.inkDim, fontSize: 12.5 }}>{s.ov.noWeeks}</Panel>}
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
         <SparkTile {...tile("sessions", s.ga4Kpi.sessions, fmtInt, "up", "#6E9BF2")} />
