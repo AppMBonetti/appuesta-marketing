@@ -45,6 +45,46 @@ function toLocalDay(iso) {
   return isNaN(d.getTime()) ? null : localDay(d);
 }
 
+
+/**
+ * Altenar exports carry no timezone marker, and the same bet can come back with
+ * a different clock time when a report is regenerated from a differently
+ * configured template — one real pair of exports differed by exactly 8 hours on
+ * all 212 shared bets. Importing that silently would move every bet across day
+ * and week boundaries, so a consistent shift against stored data blocks the
+ * import instead of quietly rewriting history.
+ */
+async function detectTimestampShift(bets) {
+  const sample = bets.filter(b => b.bet_id && b.bet_date).slice(0, 400);
+  if (sample.length < 20) return null;
+
+  const incoming = new Map(sample.map(b => [b.bet_id, b.bet_date]));
+  const ids = [...incoming.keys()];
+  const shifts = new Map();
+  let compared = 0;
+
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const { data, error } = await supabase.from("bets").select("bet_id, bet_date").in("bet_id", chunk);
+    if (error) throw error;
+    for (const row of data || []) {
+      const before = new Date(row.bet_date).getTime();
+      const after = new Date(incoming.get(row.bet_id)).getTime();
+      if (!Number.isFinite(before) || !Number.isFinite(after)) continue;
+      compared += 1;
+      const hours = Math.round((after - before) / 3600000);
+      shifts.set(hours, (shifts.get(hours) || 0) + 1);
+    }
+  }
+
+  if (compared < 20) return null;
+  const [hours, count] = [...shifts.entries()].sort((a, b) => b[1] - a[1])[0];
+  // Only a shift that applies to essentially every shared bet is a template
+  // change; a handful of corrected timestamps is normal and should pass.
+  if (hours !== 0 && count / compared > 0.9) return { hours, compared: count };
+  return null;
+}
+
 const CARD_DEFS = [
   { source: "InTarget", labelKey: "intargetCard" },
   { source: "Altenar", labelKey: "altenarCard" },
@@ -153,6 +193,15 @@ export default function Imports({ s, lang }) {
       } else {
         const { bets, unmatchedHeaders, unknownStatuses, coverage } = await parseAltenarFile(file);
         if (bets.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
+
+        const shift = await detectTimestampShift(bets);
+        if (shift) {
+          throw new Error(
+            s.shiftBlocked
+              .replace("{h}", shift.hours > 0 ? `+${shift.hours}` : String(shift.hours))
+              .replace("{n}", String(shift.compared))
+          );
+        }
 
         setPhase(source, "importing");
         const { reconciled, orphaned } = await reconcileExternalUserIds(bets);
