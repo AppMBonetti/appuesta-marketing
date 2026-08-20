@@ -9,7 +9,7 @@ import { parseIntargetFile } from "../lib/importers/intarget";
 import { parseAltenarFile } from "../lib/importers/altenar";
 import { parseGa4File } from "../lib/importers/ga4";
 import { parseInstagramFile } from "../lib/importers/instagram";
-import { upsertInChunks, SOURCE_TIMEZONE } from "../lib/importers/parseWorkbook";
+import { upsertInChunks, SOURCE_TIMEZONE, IMPORT_TIMEZONES, timezoneShiftHours } from "../lib/importers/parseWorkbook";
 
 // bets.external_user_id has a FK to players.id — if a bet references a player
 // not yet imported, null out the link rather than failing the whole batch.
@@ -51,25 +51,35 @@ function toLocalDay(iso) {
 }
 
 
-/**
- * Altenar exports carry no timezone marker, and the same bet can come back with
- * a different clock time when a report is regenerated from a differently
- * configured template — one real pair of exports differed by exactly 8 hours on
- * all 212 shared bets. Importing that silently would move every bet across day
- * and week boundaries, so a consistent shift against stored data blocks the
- * import instead of quietly rewriting history.
- */
-async function detectTimestampShift(bets) {
-  const sample = bets.filter(b => b.bet_id && b.bet_date).slice(0, 400);
-  if (sample.length < 20) return null;
+// Zone a report was last declared to have been generated in. Stored so a later
+// upload can tell an intentional zone change apart from a template accident.
+const TZ_SETTING_KEY = "altenar_source_tz";
+// Every Altenar export received so far has been rendered in UTC, so that is what
+// an unset installation assumes — and it is also how the already-loaded bets
+// were read, which keeps a re-import of an old file a no-op.
+const DEFAULT_SOURCE_TZ = "UTC";
 
-  const incoming = new Map(sample.map(b => [b.bet_id, b.bet_date]));
+/**
+ * Compares an incoming batch of bets against what is already stored, by bet_id.
+ *
+ * Two things come out of this. How many bets are already known — those get
+ * updated in place by the upsert, never duplicated, which is what makes
+ * overlapping date ranges safe. And whether the file's clock has moved: Altenar
+ * exports carry no timezone marker, and the same bet can come back with a
+ * different clock time when a report is regenerated from a differently
+ * configured template — one real pair of exports differed by exactly 8 hours on
+ * all 212 shared bets. Importing that unnoticed would move every bet across day
+ * and week boundaries.
+ */
+async function compareWithStored(bets) {
+  const dated = bets.filter(b => b.bet_id && b.bet_date);
+  const incoming = new Map(dated.map(b => [b.bet_id, b.bet_date]));
   const ids = [...incoming.keys()];
   const shifts = new Map();
   let compared = 0;
 
-  for (let i = 0; i < ids.length; i += 200) {
-    const chunk = ids.slice(i, i + 200);
+  for (let i = 0; i < ids.length; i += 300) {
+    const chunk = ids.slice(i, i + 300);
     const { data, error } = await supabase.from("bets").select("bet_id, bet_date").in("bet_id", chunk);
     if (error) throw error;
     for (const row of data || []) {
@@ -82,12 +92,15 @@ async function detectTimestampShift(bets) {
     }
   }
 
-  if (compared < 20) return null;
+  const known = compared;
+  // Too few overlapping bets to call a shift a pattern rather than a coincidence.
+  if (compared < 20) return { known, shift: null };
+
   const [hours, count] = [...shifts.entries()].sort((a, b) => b[1] - a[1])[0];
-  // Only a shift that applies to essentially every shared bet is a template
-  // change; a handful of corrected timestamps is normal and should pass.
-  if (hours !== 0 && count / compared > 0.9) return { hours, compared: count };
-  return null;
+  // Only a shift that applies to essentially every shared bet is a zone change;
+  // a handful of corrected timestamps is normal and should pass.
+  if (hours !== 0 && count / compared > 0.9) return { known, shift: { hours, compared: count } };
+  return { known, shift: null };
 }
 
 const CARD_DEFS = [
@@ -102,7 +115,22 @@ export default function Imports({ s, lang }) {
   const [lastBySource, setLastBySource] = useState({});
   const [loadingLog, setLoadingLog] = useState(true);
   const [cardState, setCardState] = useState({}); // source -> { phase, error, result }
+  const [sourceTz, setSourceTz] = useState(DEFAULT_SOURCE_TZ);
+  // The zone the stored bets were read with — what an incoming file is compared
+  // against. Held separately from the picker so changing the picker does not, on
+  // its own, make the app believe history was re-timed.
+  const storedTz = useRef(DEFAULT_SOURCE_TZ);
   const fileInputs = { InTarget: useRef(null), Altenar: useRef(null), GA4: useRef(null), Instagram: useRef(null) };
+
+  async function loadSourceTz() {
+    const { data } = await supabase
+      .from("app_settings").select("value").eq("key", TZ_SETTING_KEY).maybeSingle();
+    const value = data?.value;
+    if (value && IMPORT_TIMEZONES.some(tz => tz.value === value)) {
+      storedTz.current = value;
+      setSourceTz(value);
+    }
+  }
 
   async function loadLog() {
     setLoadingLog(true);
@@ -122,7 +150,7 @@ export default function Imports({ s, lang }) {
     setLoadingLog(false);
   }
 
-  useEffect(() => { loadLog(); }, []);
+  useEffect(() => { loadLog(); loadSourceTz(); }, []);
 
   function setPhase(source, phase, extra = {}) {
     setCardState(prev => ({ ...prev, [source]: { phase, ...extra } }));
@@ -196,7 +224,8 @@ export default function Imports({ s, lang }) {
 
         setPhase(source, "done", { rowCount: players.length, unmatchedHeaders });
       } else {
-        const { bets, unmatchedHeaders, unknownStatuses, unexpectedCurrencies, expectedCurrency, coverage } = await parseAltenarFile(file);
+        const { bets, unmatchedHeaders, unknownStatuses, unexpectedCurrencies, expectedCurrency, coverage } =
+          await parseAltenarFile(file, sourceTz);
         if (bets.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
 
         // Currency first: a wrong-currency file is unusable regardless of its
@@ -209,17 +238,48 @@ export default function Imports({ s, lang }) {
           );
         }
 
-        const shift = await detectTimestampShift(bets);
-        if (shift) {
+        // Re-reading the same wall-clock times in a different zone moves every
+        // stored bet by the difference between the two offsets. That much of a
+        // shift is the declared change doing its job; anything else means the
+        // report itself changed clock, which still blocks.
+        const referenceMs = coverage.start ? new Date(coverage.start).getTime() : Date.now();
+        const expectedShift = timezoneShiftHours(sourceTz, storedTz.current, referenceMs);
+        const { known, shift } = await compareWithStored(bets);
+        if (shift && shift.hours !== expectedShift) {
           throw new Error(
             s.shiftBlocked
               .replace("{h}", shift.hours > 0 ? `+${shift.hours}` : String(shift.hours))
               .replace("{n}", String(shift.compared))
           );
         }
+        let retimed = null;
 
         setPhase(source, "importing");
+
+        // A zone change applies to everything already stored, not just to the
+        // bets this file happens to repeat — leaving the rest behind would put
+        // two different readings of the same clock in one table. Done before the
+        // upsert, and recorded immediately, so the declaration and the data it
+        // describes can never disagree.
+        if (sourceTz !== storedTz.current) {
+          if (expectedShift !== 0) {
+            const { data: moved, error: retimeErr } = await supabase.rpc("retime_bets", { shift_hours: expectedShift });
+            if (retimeErr) throw retimeErr;
+            retimed = { from: storedTz.current, to: sourceTz, hours: expectedShift, count: moved || 0 };
+          }
+          const { error: tzErr } = await supabase.from("app_settings").upsert(
+            { key: TZ_SETTING_KEY, value: sourceTz, updated_at: new Date().toISOString() },
+            { onConflict: "key" }
+          );
+          if (tzErr) throw tzErr;
+          storedTz.current = sourceTz;
+        }
+
         const { reconciled, orphaned } = await reconcileExternalUserIds(bets);
+        // bet_id is the primary key and every column is written, so a bet that
+        // appears in two overlapping reports is updated in place: an Open bet
+        // that later settles takes its new status, winnings and settlement date
+        // rather than being counted a second time.
         await upsertInChunks(supabase, "bets", reconciled, "bet_id");
 
         setPhase(source, "logging");
@@ -233,7 +293,7 @@ export default function Imports({ s, lang }) {
         const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
         if (rpcErr) throw rpcErr;
 
-        setPhase(source, "done", { rowCount: bets.length, orphaned, unmatchedHeaders, unknownStatuses });
+        setPhase(source, "done", { rowCount: bets.length, orphaned, unmatchedHeaders, unknownStatuses, known, retimed });
       }
 
       loadLog();
@@ -272,6 +332,29 @@ export default function Imports({ s, lang }) {
                 <div style={{ fontSize: 12, color: C.inkFaint, marginBottom: 14 }}>{lang === "es" ? "Sin importaciones todavía" : "No imports yet"}</div>
               )}
 
+              {card.source === "Altenar" && (
+                <div style={{ marginBottom: 14 }}>
+                  <label
+                    htmlFor="altenar-source-tz"
+                    style={{ display: "block", fontSize: 11.5, color: C.inkDim, marginBottom: 5 }}
+                  >
+                    {s.sourceTzLabel}
+                  </label>
+                  <select
+                    id="altenar-source-tz"
+                    value={sourceTz}
+                    disabled={busy}
+                    onChange={e => setSourceTz(e.target.value)}
+                    style={{ width: "100%", padding: "7px 9px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5 }}
+                  >
+                    {IMPORT_TIMEZONES.map(tz => (
+                      <option key={tz.value} value={tz.value}>{tz.label}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 5, lineHeight: 1.4 }}>{s.sourceTzHint}</div>
+                </div>
+              )}
+
               <input
                 type="file"
                 accept=".xlsx,.csv"
@@ -295,6 +378,20 @@ export default function Imports({ s, lang }) {
                     {state.orphaned > 0 && (lang === "es"
                       ? ` — ${state.orphaned} sin jugador asociado aún`
                       : ` — ${state.orphaned} without a matching player yet`)}
+                    {state.known > 0 && (
+                      <div style={{ color: C.inkDim, marginTop: 4 }}>
+                        {s.reimported.replace("{n}", state.known.toLocaleString())}
+                      </div>
+                    )}
+                    {state.retimed && (
+                      <div style={{ color: C.inkDim, marginTop: 4 }}>
+                        {s.sourceTzChanged
+                          .replace("{from}", state.retimed.from)
+                          .replace("{to}", state.retimed.to)
+                          .replace("{n}", state.retimed.count.toLocaleString())
+                          .replace("{h}", state.retimed.hours > 0 ? `+${state.retimed.hours}` : String(state.retimed.hours))}
+                      </div>
+                    )}
                     {state.unknownStatuses?.length > 0 && (
                       <div style={{ color: C.negative, marginTop: 4 }}>
                         {lang === "es"
