@@ -11,6 +11,38 @@ function normalizeHeader(h) {
     .replace(/\s+/g, " ");
 }
 
+// Operator timezone. Altenar's export writes wall-clock times with no offset,
+// so without pinning a zone the same file produces different instants depending
+// on where it was uploaded from — a laptop in Madrid would store every bet four
+// hours away from one in Santo Domingo.
+export const SOURCE_TIMEZONE = "America/Santo_Domingo";
+
+/** Offset, in ms, that `timeZone` was from UTC at a given instant. */
+function zoneOffsetMs(utcMs, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone, hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(new Date(utcMs));
+  const at = {};
+  for (const part of parts) if (part.type !== "literal") at[part.type] = Number(part.value);
+  const asIfUtc = Date.UTC(at.year, at.month - 1, at.day, at.hour % 24, at.minute, at.second);
+  return asIfUtc - utcMs;
+}
+
+/**
+ * Converts a wall-clock reading in `timeZone` to the correct UTC instant.
+ * Applied twice because the offset itself depends on the instant, which matters
+ * either side of a DST change (the Dominican Republic has none today, but this
+ * must not quietly break if the zone setting is ever pointed elsewhere).
+ */
+export function wallClockToUtc(y, month, day, hh = 0, mm = 0, ss = 0, timeZone = SOURCE_TIMEZONE) {
+  const naive = Date.UTC(y, month - 1, day, hh, mm, ss);
+  let utc = naive - zoneOffsetMs(naive, timeZone);
+  utc = naive - zoneOffsetMs(utc, timeZone);
+  return utc;
+}
+
 function unwrapCellValue(value) {
   if (value && typeof value === "object") {
     if (value.result !== undefined) return unwrapCellValue(value.result);
@@ -43,8 +75,8 @@ export function toISOTimestamp(rawValue) {
     const [, d, m, y, hh = "0", mm = "0", ss = "0"] = dayFirst;
     const day = Number(d), month = Number(m);
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      const parsed = new Date(Number(y), month - 1, day, Number(hh), Number(mm), Number(ss));
-      return isNaN(parsed.getTime()) ? null : parsed.toISOString();
+      const utc = wallClockToUtc(Number(y), month, day, Number(hh), Number(mm), Number(ss));
+      return Number.isFinite(utc) ? new Date(utc).toISOString() : null;
     }
   }
 

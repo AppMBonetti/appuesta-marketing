@@ -9,7 +9,7 @@ import { parseIntargetFile } from "../lib/importers/intarget";
 import { parseAltenarFile } from "../lib/importers/altenar";
 import { parseGa4File } from "../lib/importers/ga4";
 import { parseInstagramFile } from "../lib/importers/instagram";
-import { upsertInChunks } from "../lib/importers/parseWorkbook";
+import { upsertInChunks, SOURCE_TIMEZONE } from "../lib/importers/parseWorkbook";
 
 // bets.external_user_id has a FK to players.id — if a bet references a player
 // not yet imported, null out the link rather than failing the whole batch.
@@ -35,8 +35,13 @@ async function reconcileExternalUserIds(bets) {
 }
 
 // The import log stores plain dates; the parsers hand back ISO timestamps.
+// Uses the operator's calendar rather than the uploader's, so a snapshot taken
+// late evening in Santo Domingo is not filed under the following day by someone
+// importing from a machine further east.
 function localDay(d = new Date()) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: SOURCE_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(d);
 }
 
 function toLocalDay(iso) {
@@ -191,8 +196,18 @@ export default function Imports({ s, lang }) {
 
         setPhase(source, "done", { rowCount: players.length, unmatchedHeaders });
       } else {
-        const { bets, unmatchedHeaders, unknownStatuses, coverage } = await parseAltenarFile(file);
+        const { bets, unmatchedHeaders, unknownStatuses, unexpectedCurrencies, expectedCurrency, coverage } = await parseAltenarFile(file);
         if (bets.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
+
+        // Currency first: a wrong-currency file is unusable regardless of its
+        // timestamps, and the message should say so rather than blaming a clock.
+        if (unexpectedCurrencies.length) {
+          throw new Error(
+            s.currencyBlocked
+              .replace("{found}", unexpectedCurrencies.join(", "))
+              .replaceAll("{expected}", expectedCurrency)
+          );
+        }
 
         const shift = await detectTimestampShift(bets);
         if (shift) {

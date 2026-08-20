@@ -216,6 +216,7 @@ export const STRINGS = {
     notAuthorizedTitle: "Sin acceso", notAuthorizedSub: "Tu cuenta inició sesión correctamente pero no está en la lista del equipo de Appuesta. Contacta a un administrador para que agregue tu correo.",
     signOut: "Cerrar sesión", signedInAs: "Conectado como",
     // imports
+    currencyBlocked: "Este reporte viene en {found} y el dashboard trabaja en {expected}. Los montos no coinciden con lo ya cargado (una apuesta de 100 DOP aparece como 1.47). Pide el reporte en {expected}.",
     shiftBlocked: "Este archivo trae las mismas apuestas con la hora corrida {h} h respecto a lo ya cargado ({n} apuestas comparadas). Suele significar que el reporte se generó con otra zona horaria — pide el mismo reporte que venías usando. Importarlo movería todos los días y semanas.",
     uploading: "Subiendo…", parsing: "Procesando archivo…", importing: "Importando filas…", assigningTiers: "Calculando niveles VIP…", snapshotting: "Guardando snapshot…",
     importSuccess: "filas importadas correctamente", importError: "Error al importar",
@@ -439,6 +440,7 @@ export const STRINGS = {
     notAuthorizedTitle: "No access", notAuthorizedSub: "Your account signed in successfully but isn't on the Appuesta team list. Ask an admin to add your email.",
     signOut: "Sign out", signedInAs: "Signed in as",
     // imports
+    currencyBlocked: "This report is denominated in {found} but the dashboard works in {expected}. The amounts do not match what is already loaded (a 100 DOP stake reads as 1.47). Ask for the report in {expected}.",
     shiftBlocked: "This file carries the same bets with timestamps shifted by {h}h against what is already loaded ({n} bets compared). That usually means the report was generated in a different timezone — ask for the same report you have been using. Importing it would move every day and week.",
     uploading: "Uploading…", parsing: "Parsing file…", importing: "Importing rows…", assigningTiers: "Assigning VIP tiers…", snapshotting: "Saving snapshot…",
     importSuccess: "rows imported successfully", importError: "Import failed",

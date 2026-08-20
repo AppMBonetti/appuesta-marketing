@@ -26,6 +26,13 @@ const HEADER_MAP = {
 
 const REQUIRED_FIELDS = ["bet_id"];
 
+// Every monetary figure in the dashboard is DOP. Altenar can render the same
+// bets in another currency depending on the report's settings — one export
+// returned the identical bets in EUR, where a 100 DOP stake reads as 1.47 —
+// and nothing in the file's own totals would look wrong, because they are
+// internally consistent. Currency is therefore checked, not assumed.
+const EXPECTED_CURRENCY = "DOP";
+
 // Statuses seen in real exports. A bet whose stake is handed back never counted
 // as wagering, so it is excluded from GGR and from VIP tier qualification —
 // this mirrors what Altenar itself leaves out of its "Totals of report" sheet.
@@ -49,6 +56,7 @@ export async function parseAltenarFile(file) {
   // is the most recently settled version of the bet.
   const betsById = new Map();
   const seenStatuses = new Set();
+  const seenCurrencies = new Set();
   let earliestBet = null;
   let latestBet = null;
   for (const r of rows) {
@@ -57,6 +65,9 @@ export async function parseAltenarFile(file) {
 
     const status = toText(r.status);
     if (status) seenStatuses.add(status);
+
+    const currency = toText(r.currency);
+    if (currency) seenCurrencies.add(currency);
 
     const betDate = toISOTimestamp(r.bet_date);
     if (betDate) {
@@ -79,7 +90,7 @@ export async function parseAltenarFile(file) {
       bet_type: toText(r.bet_type),
       stake: toNumber(r.stake),
       winnings: toNumber(r.winnings),
-      currency: toText(r.currency),
+      currency,
       status,
       bonus: toNumber(r.bonus) ?? 0,
       imported_at: now,
@@ -89,12 +100,17 @@ export async function parseAltenarFile(file) {
   // A status nobody has classified yet would silently land in GGR and in tier
   // qualification, so it is reported back for a human to rule on.
   const unknownStatuses = [...seenStatuses].filter(st => !KNOWN_STATUSES.includes(st));
+  const currencies = [...seenCurrencies];
+  const unexpectedCurrencies = currencies.filter(c => c !== EXPECTED_CURRENCY);
   const bets = [...betsById.values()];
 
   return {
     bets,
     unmatchedHeaders,
     unknownStatuses,
+    currencies,
+    unexpectedCurrencies,
+    expectedCurrency: EXPECTED_CURRENCY,
     coverage: { start: earliestBet, end: latestBet },
   };
 }
