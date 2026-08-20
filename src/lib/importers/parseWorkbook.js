@@ -43,6 +43,32 @@ export function wallClockToUtc(y, month, day, hh = 0, mm = 0, ss = 0, timeZone =
   return utc;
 }
 
+/**
+ * Timezones an export can be declared to be in. Altenar renders its reports in
+ * whatever zone the template was configured with and writes no offset into the
+ * file, so the zone has to be stated by whoever uploads it rather than guessed
+ * from the numbers.
+ */
+export const IMPORT_TIMEZONES = [
+  { value: "UTC", label: "UTC (+00:00)" },
+  { value: "America/Santo_Domingo", label: "Santo Domingo (UTC−4)" },
+  { value: "America/New_York", label: "New York (UTC−4/−5)" },
+  { value: "America/Bogota", label: "Bogotá (UTC−5)" },
+  { value: "Europe/Madrid", label: "Madrid (UTC+1/+2)" },
+];
+
+/** Hours `to` is ahead of `from` at a given instant — 0 when the zones agree. */
+export function timezoneShiftHours(from, to, atMs = Date.now()) {
+  if (!from || !to || from === to) return 0;
+  return Math.round((zoneOffsetMs(atMs, to) - zoneOffsetMs(atMs, from)) / 3600000);
+}
+
+/** Wall-clock parts of an instant, read as if it were UTC. */
+function utcParts(ms) {
+  const d = new Date(ms);
+  return [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds()];
+}
+
 function unwrapCellValue(value) {
   if (value && typeof value === "object") {
     if (value.result !== undefined) return unwrapCellValue(value.result);
@@ -57,14 +83,31 @@ function unwrapCellValue(value) {
 // this is the fallback for files exported straight from the UI table.
 const DAY_FIRST_RE = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/;
 
-export function toISOTimestamp(rawValue) {
+// "2026-08-14 09:41:00" / "2026-08-14T09:41" — ISO order with no offset, so the
+// reading is wall clock and needs the source zone applied like any other.
+const ISO_NO_OFFSET_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?(?:\.\d+)?$/;
+
+/**
+ * Parses a cell into a UTC ISO timestamp, reading offset-less values as wall
+ * clock in `timeZone`. Excel stores a datetime as a bare serial number with no
+ * zone attached, so the same cell means a different instant depending on which
+ * zone the report was rendered in — that choice belongs to the caller.
+ */
+export function toISOTimestamp(rawValue, timeZone = SOURCE_TIMEZONE) {
   const value = unwrapCellValue(rawValue);
   if (value == null || value === "") return null;
-  if (value instanceof Date) return isNaN(value.getTime()) ? null : value.toISOString();
+  // ExcelJS builds dates from the serial as if it were UTC, so the Date it hands
+  // back carries the file's wall clock, not an instant — re-read it in `timeZone`.
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return null;
+    const utc = wallClockToUtc(...utcParts(value.getTime()), timeZone);
+    return Number.isFinite(utc) ? new Date(utc).toISOString() : null;
+  }
   if (typeof value === "number") {
     // Excel serial date (days since 1899-12-30), in case a cell wasn't auto-parsed to a Date
     const excelEpoch = Date.UTC(1899, 11, 30);
-    return new Date(excelEpoch + value * 86400000).toISOString();
+    const utc = wallClockToUtc(...utcParts(excelEpoch + value * 86400000), timeZone);
+    return Number.isFinite(utc) ? new Date(utc).toISOString() : null;
   }
 
   const str = String(value).trim();
@@ -75,11 +118,19 @@ export function toISOTimestamp(rawValue) {
     const [, d, m, y, hh = "0", mm = "0", ss = "0"] = dayFirst;
     const day = Number(d), month = Number(m);
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      const utc = wallClockToUtc(Number(y), month, day, Number(hh), Number(mm), Number(ss));
+      const utc = wallClockToUtc(Number(y), month, day, Number(hh), Number(mm), Number(ss), timeZone);
       return Number.isFinite(utc) ? new Date(utc).toISOString() : null;
     }
   }
 
+  const isoLocal = str.match(ISO_NO_OFFSET_RE);
+  if (isoLocal) {
+    const [, y, m, d, hh = "0", mm = "0", ss = "0"] = isoLocal;
+    const utc = wallClockToUtc(Number(y), Number(m), Number(d), Number(hh), Number(mm), Number(ss), timeZone);
+    return Number.isFinite(utc) ? new Date(utc).toISOString() : null;
+  }
+
+  // Anything left carries its own offset (or a "Z"), which is authoritative.
   const parsed = new Date(str);
   return isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }

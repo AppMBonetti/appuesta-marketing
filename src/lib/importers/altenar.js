@@ -1,4 +1,4 @@
-import { parseXlsxFile, toISOTimestamp, toNumber, toText, toIdText } from "./parseWorkbook";
+import { parseXlsxFile, toISOTimestamp, toNumber, toText, toIdText, SOURCE_TIMEZONE } from "./parseWorkbook";
 
 // Normalized (trimmed, lowercased, whitespace-collapsed) Altenar export headers -> bets columns.
 // Columns not present in the `bets` schema (Skin, Affiliate, Client IP, Player limit group,
@@ -40,7 +40,15 @@ const RETURNED_STAKE_STATUSES = ["Void", "VoidCashout", "Rejected"];
 const SETTLED_STATUSES = ["Win", "Lost", "Open", "Cashout"];
 const KNOWN_STATUSES = [...RETURNED_STAKE_STATUSES, ...SETTLED_STATUSES];
 
-export async function parseAltenarFile(file) {
+/**
+ * @param {File} file
+ * @param {string} timeZone zone the export was rendered in. Altenar writes bare
+ *   wall-clock times with no offset, and the reporting template decides which
+ *   zone those are in, so the uploader declares it rather than the parser
+ *   guessing — the same file read as UTC or as UTC−4 moves bets across day and
+ *   week boundaries.
+ */
+export async function parseAltenarFile(file, timeZone = SOURCE_TIMEZONE) {
   const { rows, matchedHeaders, unmatchedHeaders } = await parseXlsxFile(file, HEADER_MAP);
 
   const missingRequired = REQUIRED_FIELDS.filter(f => !matchedHeaders.some(h => HEADER_MAP[h] === f));
@@ -69,7 +77,7 @@ export async function parseAltenarFile(file) {
     const currency = toText(r.currency);
     if (currency) seenCurrencies.add(currency);
 
-    const betDate = toISOTimestamp(r.bet_date);
+    const betDate = toISOTimestamp(r.bet_date, timeZone);
     if (betDate) {
       if (!earliestBet || betDate < earliestBet) earliestBet = betDate;
       if (!latestBet || betDate > latestBet) latestBet = betDate;
@@ -85,8 +93,8 @@ export async function parseAltenarFile(file) {
       champ_name: toText(r.champ_name),
       event_name: toText(r.event_name),
       bet_date: betDate,
-      event_date: toISOTimestamp(r.event_date),
-      settlement_date: toISOTimestamp(r.settlement_date),
+      event_date: toISOTimestamp(r.event_date, timeZone),
+      settlement_date: toISOTimestamp(r.settlement_date, timeZone),
       bet_type: toText(r.bet_type),
       stake: toNumber(r.stake),
       winnings: toNumber(r.winnings),
@@ -111,6 +119,7 @@ export async function parseAltenarFile(file) {
     currencies,
     unexpectedCurrencies,
     expectedCurrency: EXPECTED_CURRENCY,
+    timeZone,
     coverage: { start: earliestBet, end: latestBet },
   };
 }

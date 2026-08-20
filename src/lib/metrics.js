@@ -148,3 +148,36 @@ export function wowChange(current, previous) {
   if (current == null || previous == null || previous === 0) return null;
   return ((current - previous) / Math.abs(previous)) * 100;
 }
+
+// Counts and amounts that are simply additive across weeks.
+const ADDITIVE_KPI_FIELDS = [
+  "spend", "sessions", "registrations", "ftds", "ftd_revenue", "ftd_revenue_known",
+  "deposit_count", "deposit_amount", "ggr",
+];
+
+// Distinct-player figures and the median cannot be recovered from weekly rows:
+// a player active in two weeks appears in both, so adding them counts them
+// twice, and a median of medians is not a median. They are reported only at
+// week grain — over a longer period they stay null and render as "—" rather
+// than as a number nobody could reconcile.
+const NON_ADDITIVE_KPI_FIELDS = ["depositors", "active_players", "median_ggr_per_player"];
+
+/**
+ * Collapses several `weekly_kpis` rows into one, so a month or a custom span can
+ * be read with the same tiles as a single week. Ratios are deliberately not
+ * averaged: passing the summed row through `deriveWeeklyKpis` recomputes cost
+ * per acquisition as total spend over total FTDs, which is the period's real
+ * cost — the mean of four weekly CPAs is not.
+ */
+export function aggregateWeeklyRows(rows) {
+  if (!rows?.length) return null;
+  if (rows.length === 1) return rows[0];
+
+  const out = {};
+  for (const field of ADDITIVE_KPI_FIELDS) {
+    const present = rows.filter(r => r?.[field] != null);
+    out[field] = present.length ? present.reduce((sum, r) => sum + Number(r[field]), 0) : null;
+  }
+  for (const field of NON_ADDITIVE_KPI_FIELDS) out[field] = null;
+  return out;
+}
