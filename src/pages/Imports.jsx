@@ -9,7 +9,7 @@ import { parseIntargetFile } from "../lib/importers/intarget";
 import { parseAltenarFile } from "../lib/importers/altenar";
 import { parseGa4File } from "../lib/importers/ga4";
 import { parseInstagramFile } from "../lib/importers/instagram";
-import { upsertInChunks, SOURCE_TIMEZONE, IMPORT_TIMEZONES, timezoneShiftHours } from "../lib/importers/parseWorkbook";
+import { upsertInChunks, SOURCE_TIMEZONE, IMPORT_TIMEZONES, timezoneShiftHours, zoneCancellingShift } from "../lib/importers/parseWorkbook";
 
 // bets.external_user_id has a FK to players.id — if a bet references a player
 // not yet imported, null out the link rather than failing the whole batch.
@@ -54,10 +54,11 @@ function toLocalDay(iso) {
 // Zone a report was last declared to have been generated in. Stored so a later
 // upload can tell an intentional zone change apart from a template accident.
 const TZ_SETTING_KEY = "altenar_source_tz";
-// Every Altenar export received so far has been rendered in UTC, so that is what
-// an unset installation assumes — and it is also how the already-loaded bets
-// were read, which keeps a re-import of an old file a no-op.
-const DEFAULT_SOURCE_TZ = "UTC";
+// How bets were read before the zone was selectable, so an unset installation
+// keeps reading them the same way and re-importing an old file stays a no-op.
+// Verified against the exports themselves: MLB fixtures in the loaded data land
+// on each park's published start time only under this reading.
+const DEFAULT_SOURCE_TZ = "America/Santo_Domingo";
 
 /**
  * Compares an incoming batch of bets against what is already stored, by bet_id.
@@ -238,30 +239,34 @@ export default function Imports({ s, lang }) {
           );
         }
 
-        // Re-reading the same wall-clock times in a different zone moves every
-        // stored bet by the difference between the two offsets. That much of a
-        // shift is the declared change doing its job; anything else means the
-        // report itself changed clock, which still blocks.
+        // Declaring the zone is what makes an export line up with what is
+        // already stored, so the test is simply whether it did: a bet present in
+        // both must land on the same instant. Any residual shift means the zone
+        // is wrong or the report changed clock — and since a wrong zone is the
+        // common case, the message names the one that would cancel the shift
+        // instead of just reporting its size.
         const referenceMs = coverage.start ? new Date(coverage.start).getTime() : Date.now();
-        const expectedShift = timezoneShiftHours(sourceTz, storedTz.current, referenceMs);
         const { known, shift } = await compareWithStored(bets);
-        if (shift && shift.hours !== expectedShift) {
+        if (shift) {
+          const fix = zoneCancellingShift(shift.hours, sourceTz, referenceMs);
           throw new Error(
             s.shiftBlocked
               .replace("{h}", shift.hours > 0 ? `+${shift.hours}` : String(shift.hours))
               .replace("{n}", String(shift.compared))
+            + (fix ? " " + s.shiftFixHint.replace("{zone}", fix.label) : "")
           );
         }
         let retimed = null;
 
         setPhase(source, "importing");
 
-        // A zone change applies to everything already stored, not just to the
-        // bets this file happens to repeat — leaving the rest behind would put
-        // two different readings of the same clock in one table. Done before the
-        // upsert, and recorded immediately, so the declaration and the data it
-        // describes can never disagree.
+        // With overlapping bets the zero-shift check above already proved the
+        // new reading agrees with the stored one, so nothing needs moving. Only
+        // a zone change that had no overlap to verify against leaves history in
+        // the old reading, and that is what gets re-timed — otherwise the table
+        // would hold two different readings of the same clock.
         if (sourceTz !== storedTz.current) {
+          const expectedShift = known ? 0 : timezoneShiftHours(sourceTz, storedTz.current, referenceMs);
           if (expectedShift !== 0) {
             const { data: moved, error: retimeErr } = await supabase.rpc("retime_bets", { shift_hours: expectedShift });
             if (retimeErr) throw retimeErr;
