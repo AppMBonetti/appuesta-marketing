@@ -63,6 +63,19 @@ export function timezoneShiftHours(from, to, atMs = Date.now()) {
   return Math.round((zoneOffsetMs(atMs, to) - zoneOffsetMs(atMs, from)) / 3600000);
 }
 
+/**
+ * The zone that would have made an import land where the stored data already
+ * sits. Reading a wall clock in zone Z gives `wall - offset(Z)`, so a batch that
+ * came out `shiftHours` off under `declaredZone` needs a zone whose offset is
+ * `offset(declared) + shiftHours` — which is a far more useful thing to tell
+ * someone than the size of the error.
+ */
+export function zoneCancellingShift(shiftHours, declaredZone, atMs = Date.now()) {
+  if (!shiftHours) return null;
+  const target = zoneOffsetMs(atMs, declaredZone) + shiftHours * 3600000;
+  return IMPORT_TIMEZONES.find(tz => zoneOffsetMs(atMs, tz.value) === target) || null;
+}
+
 /** Wall-clock parts of an instant, read as if it were UTC. */
 function utcParts(ms) {
   const d = new Date(ms);
