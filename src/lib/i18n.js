@@ -133,7 +133,8 @@ export const STRINGS = {
     tierDrill: {
       hint: "Haz clic en un nivel para ver sus jugadores",
       players: "jugadores", noPlayers: "Ningún jugador en este nivel todavía.",
-      cols: { player: "Jugador", deposits: "Total depositado", count: "# Depósitos", lastDeposit: "Último depósito", ggr: "GGR", wagered: "Apostado 90d", progress: "Progreso al siguiente nivel" },
+      cols: { player: "Jugador", playerId: "ID", deposits: "Total depositado", count: "# Depósitos", lastDeposit: "Último depósito", ggr: "GGR", bets: "Apuestas", avgBet: "Apuesta prom.", topSport: "Deporte principal", wagered: "Apostado 90d", progress: "Progreso al siguiente nivel" },
+      searchPlaceholder: "Buscar por ID, nombre, correo o deporte",
       toNext: "para", maxTier: "Nivel máximo alcanzado", never: "Nunca",
       exportAll: "Exportar todos a CSV", exportTier: "Exportar nivel a CSV",
     },
@@ -367,7 +368,8 @@ export const STRINGS = {
     tierDrill: {
       hint: "Click a tier to see its players",
       players: "players", noPlayers: "No players in this tier yet.",
-      cols: { player: "Player", deposits: "Total deposited", count: "# Deposits", lastDeposit: "Last deposit", ggr: "GGR", wagered: "Wagered 90d", progress: "Progress to next tier" },
+      cols: { player: "Player", playerId: "ID", deposits: "Total deposited", count: "# Deposits", lastDeposit: "Last deposit", ggr: "GGR", bets: "Bets", avgBet: "Avg. bet", topSport: "Top sport", wagered: "Wagered 90d", progress: "Progress to next tier" },
+      searchPlaceholder: "Search by ID, name, email or sport",
       toNext: "to reach", maxTier: "Top tier reached", never: "Never",
       exportAll: "Export all to CSV", exportTier: "Export tier to CSV",
     },

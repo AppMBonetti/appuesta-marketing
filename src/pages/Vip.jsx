@@ -22,10 +22,28 @@ const CSV_COLUMNS = [
   { label: "total_ggr_dop", value: p => p.total_ggr_sportsbook },
   { label: "total_withdrawal_dop", value: p => p.total_withdrawal_amount },
   { label: "wagered_90d_dop", value: p => p.trailing_wager },
+  { label: "bets", value: p => p.bets },
+  { label: "total_stake_dop", value: p => p.total_stake },
+  { label: "avg_bet_dop", value: p => p.avg_stake },
+  { label: "median_bet_dop", value: p => p.median_stake },
+  { label: "sports_played", value: p => p.sports_played },
+  { label: "top_sport", value: p => p.top_sport },
+  { label: "top_sport_share_pct", value: p => p.top_sport_share },
   { label: "next_tier", value: p => p.next_tier },
   { label: "wager_to_next_tier_dop", value: p => p.wager_to_next },
   { label: "progress_to_next_pct", value: p => (p.progress_to_next == null ? "" : Math.round(p.progress_to_next * 100)) },
 ];
+
+/** Case- and accent-insensitive, so "beisbol" finds "Béisbol". */
+function normalize(text) {
+  return String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function matchesSearch(player, needle) {
+  if (!needle) return true;
+  return [player.id, player.name, player.email, player.top_sport]
+    .some(field => normalize(field).includes(needle));
+}
 
 function exportPlayers(rows, label) {
   const stamp = new Date().toISOString().slice(0, 10);
@@ -64,6 +82,7 @@ export default function Vip({ s, lang }) {
   const [rows, setRows] = useState([]);
   const [players, setPlayers] = useState([]);
   const [openTier, setOpenTier] = useState(null);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -92,6 +111,11 @@ export default function Vip({ s, lang }) {
     return () => { active = false; };
   }, []);
 
+  // Search narrows the lists and the exports, but never the tier counts above
+  // them — those state the real size of each tier regardless of what is filtered.
+  const needle = normalize(search.trim());
+  const visiblePlayers = players.filter(p => matchesSearch(p, needle));
+
   const maxPop = Math.max(1, ...rows.map(r => Number(r.players)));
   const totalPlayers = rows.reduce((sum, r) => sum + Number(r.players), 0);
   const hasData = totalPlayers > 0;
@@ -108,11 +132,18 @@ export default function Vip({ s, lang }) {
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
               <p style={{ color: C.inkFaint, fontSize: 12, margin: 0 }}>{s.tierDrill.hint}</p>
+              <input
+                type="search"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={s.tierDrill.searchPlaceholder}
+                style={{ flex: "1 1 240px", maxWidth: 340, padding: "7px 11px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: C.panel, color: C.ink, fontSize: 12.5 }}
+              />
               <button
-                onClick={() => exportPlayers(players, "todos")}
+                onClick={() => exportPlayers(visiblePlayers, search ? "busqueda" : "todos")}
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5, cursor: "pointer" }}
               >
-                <Download size={13} /> {s.tierDrill.exportAll} ({players.length})
+                <Download size={13} /> {s.tierDrill.exportAll} ({visiblePlayers.length})
               </button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -120,7 +151,7 @@ export default function Vip({ s, lang }) {
                 const count = Number(t.players);
                 const share = totalPlayers > 0 ? (count / totalPlayers) * 100 : 0;
                 const open = openTier === t.tier_name;
-                const tierPlayers = players.filter(p => p.vip_tier === t.tier_name);
+                const tierPlayers = visiblePlayers.filter(p => p.vip_tier === t.tier_name);
                 const Chevron = open ? ChevronDown : ChevronRight;
 
                 return (
@@ -162,19 +193,28 @@ export default function Vip({ s, lang }) {
                           <table style={{ width: "100%", borderCollapse: "collapse" }}>
                             <thead>
                               <tr>
-                                {[s.tierDrill.cols.player, s.tierDrill.cols.deposits, s.tierDrill.cols.count,
-                                  s.tierDrill.cols.lastDeposit, s.tierDrill.cols.ggr, s.tierDrill.cols.wagered,
-                                  s.tierDrill.cols.progress].map(h => <th key={h} style={thStyle}>{h}</th>)}
+                                {[s.tierDrill.cols.player, s.tierDrill.cols.playerId, s.tierDrill.cols.deposits,
+                                  s.tierDrill.cols.count, s.tierDrill.cols.lastDeposit, s.tierDrill.cols.ggr,
+                                  s.tierDrill.cols.bets, s.tierDrill.cols.avgBet, s.tierDrill.cols.topSport,
+                                  s.tierDrill.cols.wagered, s.tierDrill.cols.progress].map(h => <th key={h} style={thStyle}>{h}</th>)}
                               </tr>
                             </thead>
                             <tbody>
                               {tierPlayers.map(p => (
                                 <tr key={p.id}>
                                   <td style={{ ...tdStyle, fontWeight: 500 }}>{p.name || p.id}</td>
+                                  <td style={{ ...tdStyle, color: C.inkFaint, fontFamily: "monospace", fontSize: 11.5 }}>{p.id}</td>
                                   <td style={tdStyle}>{fmtDOP(p.total_deposit_amount)}</td>
                                   <td style={{ ...tdStyle, color: C.inkDim }}>{p.total_deposit_count ?? 0}</td>
                                   <td style={{ ...tdStyle, color: C.inkDim }}>{fmtDate(p.last_deposit_date, s, lang)}</td>
                                   <td style={tdStyle}>{fmtDOP(p.total_ggr_sportsbook)}</td>
+                                  <td style={{ ...tdStyle, color: C.inkDim }}>{Number(p.bets) || 0}</td>
+                                  <td style={tdStyle}>{p.avg_stake == null ? "—" : fmtDOP(p.avg_stake)}</td>
+                                  <td style={{ ...tdStyle, color: C.inkDim }}>
+                                    {p.top_sport
+                                      ? <>{p.top_sport}{p.top_sport_share == null ? "" : ` · ${Math.round(Number(p.top_sport_share))}%`}</>
+                                      : "—"}
+                                  </td>
                                   <td style={tdStyle}>{fmtDOP(p.trailing_wager)}</td>
                                   <td style={{ ...tdStyle, width: "1%" }}>
                                     <ProgressToNext player={p} color={t.color} s={s} />
