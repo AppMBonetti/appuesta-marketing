@@ -23,18 +23,14 @@ export default function SnapshotRollback({ s, lang }) {
 
   async function load() {
     setLoading(true);
+    // Counted server-side: one row per snapshot rather than one per player, so
+    // the list is not silently truncated by PostgREST's 1000-row response cap.
     const { data, error: err } = await supabase
-      .from("player_snapshots")
-      .select("snapshot_date")
+      .from("snapshot_index")
+      .select("snapshot_date, players")
       .order("snapshot_date", { ascending: false });
     if (err) setError(err.message);
-    else {
-      const counts = new Map();
-      for (const row of data || []) {
-        counts.set(row.snapshot_date, (counts.get(row.snapshot_date) || 0) + 1);
-      }
-      setSnapshots([...counts.entries()].map(([date, players]) => ({ date, players })));
-    }
+    else setSnapshots((data || []).map(r => ({ date: r.snapshot_date, players: r.players })));
     setLoading(false);
   }
 
