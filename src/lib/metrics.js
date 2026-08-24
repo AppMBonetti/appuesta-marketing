@@ -97,7 +97,29 @@ export function deriveWeeklyKpis(row) {
     trafficToRegistration: ratio(registrations, sessions),
     registrationToDeposit: ratio(ftds, registrations),
     arpu: ratio(ggr, activePlayers),
+    ...manualFlags(row),
   };
+}
+
+// Which view columns carry a hand-entered correction, keyed by the metric name
+// the grid renders. The flag travels with the value so a corrected cell can be
+// badged wherever it appears.
+const MANUAL_FLAG_COLUMNS = {
+  registrations: "registrations_is_manual",
+  ftds: "ftds_is_manual",
+  ftdRevenue: "ftd_revenue_is_manual",
+  depositCount: "deposit_count_is_manual",
+  depositAmount: "deposit_amount_is_manual",
+  depositors: "depositors_is_manual",
+  activePlayers: "active_players_is_manual",
+};
+
+function manualFlags(row) {
+  const out = {};
+  for (const [metric, column] of Object.entries(MANUAL_FLAG_COLUMNS)) {
+    out[`${metric}_is_manual`] = row?.[column] === true;
+  }
+  return out;
 }
 
 /**
@@ -179,5 +201,10 @@ export function aggregateWeeklyRows(rows) {
     out[field] = present.length ? present.reduce((sum, r) => sum + Number(r[field]), 0) : null;
   }
   for (const field of NON_ADDITIVE_KPI_FIELDS) out[field] = null;
+  // One corrected week makes the whole period's figure partly hand-entered, and
+  // the badge should say so rather than disappear into the sum.
+  for (const column of Object.values(MANUAL_FLAG_COLUMNS)) {
+    out[column] = rows.some(r => r?.[column] === true);
+  }
   return out;
 }
