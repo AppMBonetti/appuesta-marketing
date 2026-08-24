@@ -116,6 +116,8 @@ export default function Overview({ s, lang }) {
   if (error) return <Panel style={{ color: C.negative }}>{error}</Panel>;
   if (!weeks.length) return (<><SectionHeading title={s.ov.heroTitle} subtitle={s.ov.heroSub} /><EmptyState s={s} /></>);
 
+  // Flagged on every row by the view; one read is enough to know.
+  const depositsUntrusted = weeks.some(w => w.raw?.deposits_untrusted);
   const months = monthsWithData(weeks);
   const shown = weeksForSelection(weeks, mode, selection);
 
@@ -236,6 +238,14 @@ export default function Overview({ s, lang }) {
       </div>
 
       {!shown.length && !exactRange && <Panel style={{ marginBottom: 16, color: C.inkDim, fontSize: 12.5 }}>{s.ov.noWeeks}</Panel>}
+
+      {depositsUntrusted && (
+        // Deposit-derived tiles read "—" on purpose. Without saying why, a blank
+        // looks like a loading failure and someone goes hunting for a bug.
+        <div style={{ background: "#2A2216", border: "1px solid #D9A84855", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#D9A848", marginBottom: 16, lineHeight: 1.5 }}>
+          {s.ov.depositsUntrusted}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
         <SparkTile {...tile("sessions", s.ga4Kpi.sessions, fmtInt, "up", "#6E9BF2")} />
