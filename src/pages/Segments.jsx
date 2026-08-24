@@ -31,6 +31,9 @@ const CSV_COLUMNS = [
   { label: "total_stake_dop", value: p => p.total_stake },
   { label: "avg_stake_dop", value: p => p.avg_stake },
   { label: "median_stake_dop", value: p => p.median_stake },
+  { label: "last_settlement", value: p => p.last_settlement_date },
+  { label: "open_bets", value: p => p.open_bets },
+  { label: "has_live_hook", value: p => (p.has_live_hook ? "yes" : "no") },
   { label: "top_sport", value: p => p.top_sport },
   { label: "top_sport_share_pct", value: p => p.top_sport_share },
   { label: "sports_played", value: p => p.sports_played },
@@ -215,6 +218,14 @@ export default function Segments({ s, lang }) {
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                       <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_COLORS[p.lifecycle] }} />
                       {s.seg.lifecycle[p.lifecycle] || p.lifecycle}
+                      {p.has_live_hook && (
+                        // The segment reflects what the player did; this flags a
+                        // reason to contact them anyway — a bet the house just
+                        // settled, or one still running.
+                        <span title={s.seg.liveHookHint} style={{ color: "#D9A848", fontSize: 10, border: "1px solid #D9A84855", borderRadius: 5, padding: "1px 5px" }}>
+                          {s.seg.liveHook}
+                        </span>
+                      )}
                     </span>
                   </td>
                   <td style={{ ...td, color: C.inkDim }}>{p.vip_tier || "—"}</td>

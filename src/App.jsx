@@ -22,6 +22,11 @@ import Optimization from "./pages/Optimization";
 import Imports from "./pages/Imports";
 import Settings from "./pages/Settings";
 
+const TAB_IDS = [
+  "overview", "acquisition", "funnel", "retention",
+  "vip", "segments", "optimization", "imports", "settings",
+];
+
 export default function App() {
   const [lang, setLang] = useState("es");
   const { status } = useAuth();
@@ -60,7 +65,22 @@ export default function App() {
 }
 
 function Dashboard({ lang, setLang, s }) {
-  const [tab, setTab] = useState("overview");
+  // Closing the dashboard and coming back should land where you left off, not
+  // reset to Overview. Reads are guarded because a private window or blocked
+  // site data makes localStorage throw rather than return null.
+  const [tab, setTab] = useState(() => {
+    try {
+      const saved = localStorage.getItem("appuesta.tab");
+      // A renamed or removed tab would otherwise restore to a blank page.
+      return TAB_IDS.includes(saved) ? saved : "overview";
+    } catch {
+      return "overview";
+    }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem("appuesta.tab", tab); } catch { /* storage unavailable */ }
+  }, [tab]);
   // Currency lives in module state so every formatter reads it; keeping a copy
   // here is what re-renders the tree when it changes.
   const [currency, setCurrencyUi] = useState(() => restoreCurrency());

@@ -145,6 +145,16 @@ export default function WeeklyKpiGrid({ s, lang, weeks, rowsByWeek, onEditSpend,
                         ) : (
                           <>
                             {formatValue(current, row.format)}
+                            {rowsByWeek[week]?.[`${row.key}_is_manual`] && (
+                              // A hand-entered correction has to be visible, or
+                              // nobody can tell it apart from what the source said.
+                              <span
+                                title={s.manual.sub}
+                                style={{ color: "#D9A848", fontSize: 10.5, marginLeft: 5 }}
+                              >
+                                {s.manual.badge}
+                              </span>
+                            )}
                             {row.coverageOf && current != null && (() => {
                               const known = rowsByWeek[week]?.[row.coverageCount];
                               const total = rowsByWeek[week]?.[row.coverageOf];

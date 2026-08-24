@@ -5,6 +5,7 @@ import { C } from "../lib/theme";
 import { SectionHeading, Panel, Spinner } from "../components/ui";
 import DataCoverage from "../components/DataCoverage";
 import DataHealth from "../components/DataHealth";
+import SnapshotRollback from "../components/SnapshotRollback";
 import { parseIntargetFile } from "../lib/importers/intarget";
 import { parseAltenarFile } from "../lib/importers/altenar";
 import { parseGa4File } from "../lib/importers/ga4";
@@ -431,6 +432,8 @@ export default function Imports({ s, lang }) {
       <DataHealth s={s} />
 
       <DataCoverage s={s} lang={lang} />
+
+      <SnapshotRollback s={s} lang={lang} />
 
       <div style={{ fontSize: 13, color: C.inkDim, marginBottom: 10 }}>{s.importHistory}</div>
       {loadingLog ? (

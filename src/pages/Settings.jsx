@@ -5,6 +5,7 @@ import { C } from "../lib/theme";
 import { monthOptions, currentBudgetMonth, formatMonth, weeksInMonth } from "../lib/period";
 import { deriveWeeklyKpis } from "../lib/metrics";
 import { SectionHeading, Panel, Spinner, fmtDOP } from "../components/ui";
+import ManualCorrections from "../components/ManualCorrections";
 
 // `lowerIsBetter` flips how attainment reads: hitting a CPA goal means coming in
 // under it, so 100% there is not the same shape as 100% of a registrations goal.
@@ -45,6 +46,37 @@ export default function Settings({ s, lang }) {
   const [weeklyRows, setWeeklyRows] = useState([]);
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [minDeposit, setMinDeposit] = useState("");
+  const [minDepositSaving, setMinDepositSaving] = useState(false);
+  const [minDepositSaved, setMinDepositSaved] = useState(false);
+  const [excludedByFloor, setExcludedByFloor] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const [setting, health] = await Promise.all([
+        supabase.from("app_settings").select("value").eq("key", "min_qualifying_deposit").maybeSingle(),
+        supabase.from("dashboard_health").select("ftd_below_floor").maybeSingle(),
+      ]);
+      if (!active) return;
+      if (setting.data?.value != null) setMinDeposit(String(setting.data.value));
+      if (health.data) setExcludedByFloor(health.data.ftd_below_floor);
+    })();
+    return () => { active = false; };
+  }, []);
+
+  async function saveMinDeposit() {
+    setMinDepositSaving(true);
+    const value = String(Number(minDeposit) || 0);
+    const { error: err } = await supabase.from("app_settings").upsert(
+      { key: "min_qualifying_deposit", value, updated_at: new Date().toISOString() },
+      { onConflict: "key" }
+    );
+    setMinDepositSaving(false);
+    if (err) { setError(err.message); return; }
+    setMinDepositSaved(true);
+    setTimeout(() => setMinDepositSaved(false), 1800);
+  }
 
   useEffect(() => {
     let active = true;
@@ -172,6 +204,40 @@ export default function Settings({ s, lang }) {
         {saving ? <Spinner /> : savedFlash ? <Check size={14} /> : null}
         {savedFlash ? s.cfg.saved : s.cfg.saveAll}
       </button>
+
+      <div style={{ marginTop: 34 }}>
+        <SectionHeading title={s.minDeposit.title} subtitle={s.minDeposit.sub} />
+        <Panel style={{ marginBottom: 26 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <label htmlFor="min-deposit" style={{ display: "block", fontSize: 11.5, color: C.inkDim, marginBottom: 5 }}>
+                {s.minDeposit.label}
+              </label>
+              <input
+                id="min-deposit" inputMode="decimal" value={minDeposit}
+                onChange={e => setMinDeposit(e.target.value)}
+                style={{ width: 140, background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "7px 10px", fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}
+              />
+            </div>
+            <button onClick={saveMinDeposit} disabled={minDepositSaving}
+              style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 16px", borderRadius: 9, border: "none", background: minDepositSaved ? C.positive : C.accent, color: "#fff", fontSize: 12.5, fontWeight: 500, cursor: minDepositSaving ? "default" : "pointer", opacity: minDepositSaving ? 0.7 : 1 }}>
+              {minDepositSaving ? <Spinner /> : minDepositSaved ? <Check size={14} /> : null}
+              {minDepositSaved ? s.cfg.saved : s.cfg.saveAll}
+            </button>
+            {excludedByFloor != null && (
+              <span style={{ fontSize: 12, color: C.inkDim, paddingBottom: 8 }}>
+                {s.minDeposit.excluded.replace("{n}", Number(excludedByFloor).toLocaleString())}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 12, lineHeight: 1.5, maxWidth: 720 }}>
+            {s.minDeposit.caveat}
+          </div>
+        </Panel>
+
+        <SectionHeading title={s.manual.title} />
+        <ManualCorrections s={s} lang={lang} />
+      </div>
     </>
   );
 }
