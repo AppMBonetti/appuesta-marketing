@@ -453,7 +453,12 @@ export default function Imports({ s, lang }) {
                   <td style={{ padding: "8px 14px", color: C.inkDim }}>{new Date(l.imported_at).toLocaleString(lang === "es" ? "es-DO" : "en-US")}</td>
                   <td style={{ padding: "8px 14px", color: C.inkFaint }}>{l.filename}</td>
                   <td style={{ padding: "8px 14px" }}>{l.row_count?.toLocaleString() ?? "—"}</td>
-                  <td style={{ padding: "8px 14px", color: l.status === "success" ? C.positive : C.negative }}>{l.status}</td>
+                  <td style={{ padding: "8px 14px", color: l.reverted_at ? C.inkFaint : l.status === "success" ? C.positive : C.negative }}>
+                    {/* The log records what was uploaded, so a reverted import
+                        stays listed — but its data is no longer in the dashboard
+                        and the row has to say so. */}
+                    {l.reverted_at ? s.rollback.reverted : l.status}
+                  </td>
                 </tr>
               ))}
             </tbody>

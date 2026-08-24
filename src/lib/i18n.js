@@ -241,6 +241,7 @@ export const STRINGS = {
       confirm: "Esto devuelve la tabla de jugadores al estado del {prev} y borra el snapshot del {date}. Los jugadores que solo existían en ese reporte se eliminan. No se puede deshacer.",
       confirmYes: "Sí, revertir", cancel: "Cancelar",
       done: "Revertido al {prev}: {restored} jugadores restaurados, {removed} eliminados, {unlinked} apuestas desvinculadas.",
+      reverted: "revertido",
     },
     manual: {
       title: "Correcciones manuales por día",
@@ -511,6 +512,7 @@ export const STRINGS = {
       confirm: "This returns the players table to its {prev} state and deletes the {date} snapshot. Players that existed only in that report are removed. It cannot be undone.",
       confirmYes: "Yes, revert", cancel: "Cancel",
       done: "Reverted to {prev}: {restored} players restored, {removed} removed, {unlinked} bets unlinked.",
+      reverted: "reverted",
     },
     manual: {
       title: "Manual daily corrections",
