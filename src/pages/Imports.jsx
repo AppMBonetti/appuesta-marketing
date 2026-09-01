@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { UploadCloud, CheckCircle2, FileSpreadsheet, AlertCircle } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
-import { SectionHeading, Panel, Spinner } from "../components/ui";
+import { SectionHeading, Panel, Spinner, fmtDOP } from "../components/ui";
 import DataCoverage from "../components/DataCoverage";
 import DataHealth from "../components/DataHealth";
 import SnapshotRollback from "../components/SnapshotRollback";
@@ -10,6 +10,9 @@ import { parseIntargetFile } from "../lib/importers/intarget";
 import { parseAltenarFile } from "../lib/importers/altenar";
 import { parseGa4File } from "../lib/importers/ga4";
 import { parseInstagramFile } from "../lib/importers/instagram";
+import { parsePaymentsFile } from "../lib/importers/payments";
+import { parseRegistrationsFile } from "../lib/importers/registrations";
+import { parseFtdListFile } from "../lib/importers/ftdList";
 import { upsertInChunks, SOURCE_TIMEZONE, IMPORT_TIMEZONES, timezoneShiftHours, zoneCancellingShift } from "../lib/importers/parseWorkbook";
 
 // bets.external_user_id has a FK to players.id — if a bet references a player
@@ -106,10 +109,13 @@ async function compareWithStored(bets) {
 }
 
 const CARD_DEFS = [
-  { source: "InTarget", labelKey: "intargetCard" },
+  { source: "Payments", labelKey: "paymentsCard", noteKey: "paymentsNote" },
+  { source: "Registrations", labelKey: "registrationsCard", noteKey: "registrationsNote" },
+  { source: "FTD", labelKey: "ftdCard", noteKey: "ftdNote" },
   { source: "Altenar", labelKey: "altenarCard" },
   { source: "GA4", labelKey: "ga4Card" },
   { source: "Instagram", labelKey: "instagramCard" },
+  { source: "InTarget", labelKey: "intargetCard" },
 ];
 
 export default function Imports({ s, lang }) {
@@ -122,7 +128,9 @@ export default function Imports({ s, lang }) {
   // against. Held separately from the picker so changing the picker does not, on
   // its own, make the app believe history was re-timed.
   const storedTz = useRef(DEFAULT_SOURCE_TZ);
-  const fileInputs = { InTarget: useRef(null), Altenar: useRef(null), GA4: useRef(null), Instagram: useRef(null) };
+  // One ref object keyed by source — calling useRef per card would put a hook
+  // inside a loop.
+  const fileInputs = useRef({});
 
   async function loadSourceTz() {
     const { data } = await supabase
@@ -163,7 +171,81 @@ export default function Imports({ s, lang }) {
     try {
       setPhase(source, "parsing");
 
-      if (source === "Instagram") {
+      if (source === "Payments") {
+        const { transactions, unmatchedHeaders, unknownTypes, unexpectedCurrencies,
+                expectedCurrency, summary, coverage } = await parsePaymentsFile(file);
+        if (transactions.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
+
+        if (unexpectedCurrencies.length) {
+          throw new Error(
+            s.currencyBlocked
+              .replace("{found}", unexpectedCurrencies.join(", "))
+              .replaceAll("{expected}", expectedCurrency)
+          );
+        }
+
+        setPhase(source, "importing");
+        // transaction_id is the primary key, so re-exporting overlapping days
+        // updates each row in place — including one that has since settled.
+        await upsertInChunks(supabase, "payment_transactions", transactions, "transaction_id");
+
+        // Deposit totals on the player are derived, never imported, so they can
+        // never drift from the transactions they summarize.
+        const { error: refreshErr } = await supabase.rpc("refresh_player_deposit_totals");
+        if (refreshErr) throw refreshErr;
+
+        setPhase(source, "logging");
+        const { error: logErr } = await supabase.from("data_imports").insert({
+          source, filename: file.name, row_count: transactions.length, status: "success",
+          period_start: toLocalDay(coverage.start), period_end: toLocalDay(coverage.end),
+        });
+        if (logErr) throw logErr;
+
+        setPhase(source, "assigning");
+        const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
+        if (rpcErr) throw rpcErr;
+
+        setPhase(source, "done", { rowCount: transactions.length, unmatchedHeaders, unknownTypes, summary });
+      } else if (source === "Registrations") {
+        const { players, unmatchedHeaders, coverage } = await parseRegistrationsFile(file);
+        if (players.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
+
+        setPhase(source, "importing");
+        await upsertInChunks(supabase, "players", players, "id");
+
+        setPhase(source, "logging");
+        const { error: logErr } = await supabase.from("data_imports").insert({
+          source, filename: file.name, row_count: players.length, status: "success",
+          period_start: toLocalDay(coverage.start), period_end: toLocalDay(coverage.end),
+        });
+        if (logErr) throw logErr;
+
+        setPhase(source, "done", { rowCount: players.length, unmatchedHeaders });
+      } else if (source === "FTD") {
+        const { players, unmatchedHeaders, amountKnown, coverage } = await parseFtdListFile(file);
+        if (players.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
+
+        setPhase(source, "importing");
+        // This file owns only the first-deposit fields. A null registration date
+        // is dropped rather than written, so it cannot blank a date the
+        // registration export already supplied.
+        const rows = players.map(p => {
+          const row = { id: p.id, first_deposit_date: p.first_deposit_date,
+            first_deposit_amount: p.first_deposit_amount, imported_at: p.imported_at };
+          if (p.registered_at) row.registered_at = p.registered_at;
+          return row;
+        });
+        await upsertInChunks(supabase, "players", rows, "id");
+
+        setPhase(source, "logging");
+        const { error: logErr } = await supabase.from("data_imports").insert({
+          source, filename: file.name, row_count: players.length, status: "success",
+          period_start: toLocalDay(coverage.start), period_end: toLocalDay(coverage.end),
+        });
+        if (logErr) throw logErr;
+
+        setPhase(source, "done", { rowCount: players.length, unmatchedHeaders, amountKnown });
+      } else if (source === "Instagram") {
         const { rows, unmatchedHeaders, coverage } = await parseInstagramFile(file);
         if (rows.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
 
@@ -328,6 +410,11 @@ export default function Imports({ s, lang }) {
                 <FileSpreadsheet size={16} color={C.accent} />
                 <span style={{ fontWeight: 600, fontSize: 13.5 }}>{s[card.labelKey]}</span>
               </div>
+              {card.noteKey && (
+                <div style={{ fontSize: 11.5, color: C.inkFaint, marginBottom: 10, lineHeight: 1.45 }}>
+                  {s[card.noteKey]}
+                </div>
+              )}
 
               {last ? (
                 <>
@@ -364,12 +451,12 @@ export default function Imports({ s, lang }) {
               <input
                 type="file"
                 accept=".xlsx,.csv"
-                ref={fileInputs[card.source]}
+                ref={el => { fileInputs.current[card.source] = el; }}
                 style={{ display: "none" }}
                 onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleFile(card.source, f); }}
               />
               <button
-                onClick={() => fileInputs[card.source].current?.click()}
+                onClick={() => fileInputs.current[card.source]?.click()}
                 disabled={busy}
                 style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5, fontWeight: 500, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}
               >
@@ -384,6 +471,24 @@ export default function Imports({ s, lang }) {
                     {state.orphaned > 0 && (lang === "es"
                       ? ` — ${state.orphaned} sin jugador asociado aún`
                       : ` — ${state.orphaned} without a matching player yet`)}
+                    {state.summary && (
+                      <div style={{ color: C.inkDim, marginTop: 4 }}>
+                        {s.depositsLoaded
+                          .replace("{n}", state.summary.depositCount.toLocaleString())
+                          .replace("{amt}", fmtDOP(state.summary.depositAmount))}
+                        <div>{s.promoExcluded.replace("{n}", state.summary.promoCount.toLocaleString())}</div>
+                      </div>
+                    )}
+                    {state.amountKnown != null && (
+                      <div style={{ color: C.inkDim, marginTop: 4 }}>
+                        {s.health.ftdOk.replace("{t}", state.amountKnown.toLocaleString())}
+                      </div>
+                    )}
+                    {state.unknownTypes?.length > 0 && (
+                      <div style={{ color: C.negative, marginTop: 4 }}>
+                        {s.unknownTypes}{state.unknownTypes.join(", ")}
+                      </div>
+                    )}
                     {state.known > 0 && (
                       <div style={{ color: C.inkDim, marginTop: 4 }}>
                         {s.reimported.replace("{n}", state.known.toLocaleString())}
