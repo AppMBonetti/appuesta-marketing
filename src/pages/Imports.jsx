@@ -378,6 +378,10 @@ export default function Imports({ s, lang }) {
         if (logErr) throw logErr;
 
         setPhase(source, "assigning");
+        // Per-player GGR is derived from the bets just loaded, so it is
+        // refreshed here rather than waiting for a player export to restate it.
+        const { error: ggrErr } = await supabase.rpc("refresh_player_ggr");
+        if (ggrErr) throw ggrErr;
         const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
         if (rpcErr) throw rpcErr;
 
