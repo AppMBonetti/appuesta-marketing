@@ -440,50 +440,51 @@ async function readSheetRowsNamespaceTolerant(file) {
  * look tabular, which separates a five-line metadata block from real data
  * without depending on either sheet's name.
  */
-function pickDataSheet(worksheets) {
-  const sheets = (worksheets || []).filter(Boolean);
-  if (sheets.length <= 1) return sheets[0];
-
-  let best = sheets[0];
-  let bestScore = -1;
-  for (const sheet of sheets) {
-    let score = 0;
-    sheet.eachRow({ includeEmpty: false }, row => {
-      const values = (row.values || []).slice(1);
-      const filled = values.filter(v => v != null && String(unwrapCellValue(v)).trim() !== "").length;
-      if (filled >= 2) score += 1;
-    });
-    if (score > bestScore) { bestScore = score; best = sheet; }
-  }
-  return best;
-}
-
-async function readSheetRows(file) {
-  const isCsv = /\.(csv|tsv|txt)$/i.test(file.name || "");
-  if (isCsv) return rowsFromDelimitedText(await file.text());
-
-  let worksheet;
-  try {
-    const { default: ExcelJS } = await import("exceljs");
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(await file.arrayBuffer());
-    worksheet = pickDataSheet(workbook.worksheets);
-  } catch {
-    // ExcelJS rejects namespace-prefixed workbooks (Altenar's exporter writes
-    // them); the tolerant reader handles those rather than failing the import.
-    return readSheetRowsNamespaceTolerant(file);
-  }
-  if (!worksheet) return readSheetRowsNamespaceTolerant(file);
-
+/** Rows of one ExcelJS worksheet, in the same shape both readers produce. */
+function rowsOfSheet(sheet) {
   const rows = [];
-  worksheet.eachRow({ includeEmpty: false }, row => {
-    const cells = [];
-    // `values` is 1-indexed with a leading hole; drop it so both readers agree.
+  sheet.eachRow({ includeEmpty: false }, row => {
     const values = row.values || [];
+    const cells = [];
     for (let i = 1; i < values.length; i++) cells.push(values[i]);
     rows.push(cells);
   });
   return rows;
+}
+
+// How many of a row's cells name a field the caller asked for. Used to find the
+// real header row when a sheet opens with a metadata preamble.
+function headerScore(cells, headerMap) {
+  if (!cells) return 0;
+  let score = 0;
+  for (const cell of cells) {
+    const norm = normalizeHeader(unwrapCellValue(cell));
+    if (norm && headerMap[norm]) score += 1;
+  }
+  return score;
+}
+
+/**
+ * Every candidate table in the file: one entry per worksheet, or a single entry
+ * for delimited text. The caller picks between them by which one actually
+ * carries the columns it needs, because a backoffice export routinely opens
+ * with a properties sheet and buries the table behind it.
+ */
+async function readSheetCandidates(file) {
+  const isCsv = /\.(csv|tsv|txt)$/i.test(file.name || "");
+  if (isCsv) return [rowsFromDelimitedText(await file.text())];
+
+  try {
+    const { default: ExcelJS } = await import("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await file.arrayBuffer());
+    const sheets = (workbook.worksheets || []).filter(Boolean);
+    if (sheets.length) return sheets.map(rowsOfSheet);
+  } catch {
+    // ExcelJS rejects namespace-prefixed workbooks (Altenar's exporter writes
+    // them); the tolerant reader handles those rather than failing the import.
+  }
+  return [await readSheetRowsNamespaceTolerant(file)];
 }
 
 /**
@@ -494,9 +495,22 @@ async function readSheetRows(file) {
  * @returns {Promise<{rows: Array<Record<string, any>>, matchedHeaders: string[], unmatchedHeaders: string[]}>}
  */
 export async function parseXlsxFile(file, headerMap) {
-  const sheetRows = await readSheetRows(file);
-  if (!sheetRows.length) throw new Error("No rows found in file");
+  const candidates = (await readSheetCandidates(file)).filter(rows => rows && rows.length);
+  if (!candidates.length) throw new Error("No rows found in file");
 
+  // Pick the sheet, and the row within it, that best matches the columns being
+  // asked for. Scanning a few rows down finds the header even when the table is
+  // preceded by a title or a block of export metadata.
+  let best = { rows: candidates[0], headerIndex: 0, score: -1 };
+  for (const rows of candidates) {
+    const limit = Math.min(rows.length, 12);
+    for (let i = 0; i < limit; i++) {
+      const score = headerScore(rows[i], headerMap);
+      if (score > best.score) best = { rows, headerIndex: i, score };
+    }
+  }
+
+  const sheetRows = best.rows.slice(best.headerIndex);
   const [headerCells, ...dataRows] = sheetRows;
   const colIndexToField = new Map();
   const matchedHeaders = [];
