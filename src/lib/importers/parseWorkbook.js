@@ -85,7 +85,10 @@ function utcParts(ms) {
 function unwrapCellValue(value) {
   if (value && typeof value === "object") {
     if (value.result !== undefined) return unwrapCellValue(value.result);
-    if (value.text !== undefined) return value.text;
+    // A hyperlinked cell nests its label: { text: { richText: [...] }, hyperlink }.
+    // Returning `.text` unexamined yields an object that stringifies to
+    // "[object Object]" — which is how an emailed player would have been stored.
+    if (value.text !== undefined) return unwrapCellValue(value.text);
     if (Array.isArray(value.richText)) return value.richText.map(t => t.text).join("");
   }
   return value;
@@ -427,6 +430,34 @@ async function readSheetRowsNamespaceTolerant(file) {
   return rows;
 }
 
+/**
+ * Chooses the sheet holding the actual table.
+ *
+ * A backoffice export often opens with a properties sheet — who ran it, when,
+ * over what date range — and puts the rows in a second sheet. Taking the first
+ * sheet unconditionally reads that preamble as the header row and finds no
+ * recognizable columns at all. The table is the sheet with the most rows that
+ * look tabular, which separates a five-line metadata block from real data
+ * without depending on either sheet's name.
+ */
+function pickDataSheet(worksheets) {
+  const sheets = (worksheets || []).filter(Boolean);
+  if (sheets.length <= 1) return sheets[0];
+
+  let best = sheets[0];
+  let bestScore = -1;
+  for (const sheet of sheets) {
+    let score = 0;
+    sheet.eachRow({ includeEmpty: false }, row => {
+      const values = (row.values || []).slice(1);
+      const filled = values.filter(v => v != null && String(unwrapCellValue(v)).trim() !== "").length;
+      if (filled >= 2) score += 1;
+    });
+    if (score > bestScore) { bestScore = score; best = sheet; }
+  }
+  return best;
+}
+
 async function readSheetRows(file) {
   const isCsv = /\.(csv|tsv|txt)$/i.test(file.name || "");
   if (isCsv) return rowsFromDelimitedText(await file.text());
@@ -436,7 +467,7 @@ async function readSheetRows(file) {
     const { default: ExcelJS } = await import("exceljs");
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(await file.arrayBuffer());
-    worksheet = workbook.worksheets[0];
+    worksheet = pickDataSheet(workbook.worksheets);
   } catch {
     // ExcelJS rejects namespace-prefixed workbooks (Altenar's exporter writes
     // them); the tolerant reader handles those rather than failing the import.
