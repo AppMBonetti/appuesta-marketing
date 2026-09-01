@@ -40,7 +40,11 @@ export async function parsePaymentsFile(file) {
 
   const missing = REQUIRED_FIELDS.filter(f => !matchedHeaders.some(h => HEADER_MAP[h] === f));
   if (missing.length) {
-    throw new Error(`Missing required column(s) in payments file: ${missing.join(", ")}`);
+    throw new Error(
+      `Missing required column(s) in payments file: ${missing.join(", ")}. ` +
+      `Columns found: ${[...matchedHeaders, ...unmatchedHeaders].join(", ") || "none"}. ` +
+      `Check this is the transaction-level export rather than a summary.`
+    );
   }
 
   const now = new Date().toISOString();

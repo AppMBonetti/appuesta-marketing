@@ -25,7 +25,11 @@ export async function parseRegistrationsFile(file) {
 
   const missing = REQUIRED_FIELDS.filter(f => !matchedHeaders.some(h => HEADER_MAP[h] === f));
   if (missing.length) {
-    throw new Error(`Missing required column(s) in registrations file: ${missing.join(", ")}`);
+    throw new Error(
+      `Missing required column(s) in registrations file: ${missing.join(", ")}. ` +
+      `Columns found: ${[...matchedHeaders, ...unmatchedHeaders].join(", ") || "none"}. ` +
+      `Check this is the player registration list, one row per player.`
+    );
   }
 
   const now = new Date().toISOString();

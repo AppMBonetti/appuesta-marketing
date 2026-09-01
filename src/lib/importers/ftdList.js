@@ -31,7 +31,11 @@ export async function parseFtdListFile(file) {
 
   const missing = REQUIRED_FIELDS.filter(f => !matchedHeaders.some(h => HEADER_MAP[h] === f));
   if (missing.length) {
-    throw new Error(`Missing required column(s) in FTD file: ${missing.join(", ")}`);
+    throw new Error(
+      `Missing required column(s) in FTD file: ${missing.join(", ")}. ` +
+      `Columns found: ${[...matchedHeaders, ...unmatchedHeaders].join(", ") || "none"}. ` +
+      `Check this is the first-time-depositor list, one row per player.`
+    );
   }
 
   const now = new Date().toISOString();
