@@ -106,13 +106,33 @@ export function formatWeek(isoDate, lang) {
  * laid out: a week belongs to the month its Monday falls in, so a week
  * straddling month end is not double-counted.
  */
+/**
+ * The calendar month a Monday-to-Sunday week belongs to: the one holding most
+ * of its days, which is always the month of its Thursday.
+ *
+ * Attributing a week to the month its Monday falls in put 31 Aug - 6 Sep into
+ * August on the strength of a single day, so a report for September opened on
+ * 7 September and lost the first six days of the month.
+ */
+export function monthOfWeek(weekISO) {
+  const [y, m, d] = weekISO.split("-").map(Number);
+  const thursday = new Date(Date.UTC(y, m - 1, d + 3));
+  return `${thursday.getUTCFullYear()}-${String(thursday.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
+/** Every week that belongs to a month under the majority-of-days rule above. */
 export function weeksInMonth(monthISO) {
   const [y, m] = monthISO.split("-").map(Number);
+  // Start from the Monday of the week containing the 1st, which may sit in the
+  // previous month and still belong to this one.
   const cursor = new Date(Date.UTC(y, m - 1, 1));
-  while (cursor.getUTCDay() !== 1) cursor.setUTCDate(cursor.getUTCDate() + 1);
+  cursor.setUTCDate(cursor.getUTCDate() - ((cursor.getUTCDay() + 6) % 7));
+  const target = `${String(y)}-${String(m).padStart(2, "0")}-01`;
   const out = [];
-  while (cursor.getUTCMonth() === m - 1) {
-    out.push(cursor.toISOString().slice(0, 10));
+  // Walk far enough to pass the month; membership decides what is kept.
+  for (let i = 0; i < 7; i++) {
+    const week = cursor.toISOString().slice(0, 10);
+    if (monthOfWeek(week) === target) out.push(week);
     cursor.setUTCDate(cursor.getUTCDate() + 7);
   }
   return out;
