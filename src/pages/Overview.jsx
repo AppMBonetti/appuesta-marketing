@@ -52,6 +52,46 @@ function weeksForSelection(weeks, mode, selection) {
   return weeks.filter(w => w.week <= end && addDays(w.week, 6) >= start);
 }
 
+/**
+ * The exact day range a selection covers, for the modes that have one.
+ *
+ * A month is a calendar month, not the weeks whose Monday falls inside it.
+ * Bucketing by week filed 1-6 September under the week starting 31 August, so
+ * picking September showed only 7-13 September and read as though the month had
+ * no registrations or FTDs at all.
+ */
+function exactRangeFor(mode, selection) {
+  if (mode === "custom") {
+    const { start, end } = selection;
+    return start && end && start <= end ? { start, end } : null;
+  }
+  if (mode === "month" && selection.month) {
+    const start = `${selection.month.slice(0, 7)}-01`;
+    const d = new Date(`${start}T00:00:00Z`);
+    d.setUTCMonth(d.getUTCMonth() + 1);
+    d.setUTCDate(0);
+    return { start, end: d.toISOString().slice(0, 10) };
+  }
+  return null;
+}
+
+/** The equivalent span immediately before a range, for the comparison figures. */
+function priorRangeFor(mode, range) {
+  if (!range) return null;
+  if (mode === "month") {
+    const d = new Date(`${range.start}T00:00:00Z`);
+    d.setUTCMonth(d.getUTCMonth() - 1);
+    const start = d.toISOString().slice(0, 10);
+    const e = new Date(`${start}T00:00:00Z`);
+    e.setUTCMonth(e.getUTCMonth() + 1);
+    e.setUTCDate(0);
+    return { start, end: e.toISOString().slice(0, 10) };
+  }
+  const days = Math.round((new Date(range.end) - new Date(range.start)) / 86400000) + 1;
+  const priorEnd = addDays(range.start, -1);
+  return { start: addDays(priorEnd, -(days - 1)), end: priorEnd };
+}
+
 export default function Overview({ s, lang }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -87,30 +127,30 @@ export default function Overview({ s, lang }) {
     return () => { active = false; };
   }, []);
 
-  const { start: customStart, end: customEnd } = selection;
+  const { start: customStart, end: customEnd, month: selectedMonth } = selection;
   useEffect(() => {
-    if (mode !== "custom" || !customStart || !customEnd || customStart > customEnd) {
+    const range = exactRangeFor(mode, { month: selectedMonth, start: customStart, end: customEnd });
+    if (!range) {
       setRangeRow(null);
       return undefined;
     }
     let active = true;
     setRangeBusy(true);
     (async () => {
-      // The comparison is the same number of days immediately before the range.
-      const days = Math.round((new Date(customEnd) - new Date(customStart)) / 86400000) + 1;
-      const priorEnd = addDays(customStart, -1);
+      const prior = priorRangeFor(mode, range);
+      const days = Math.round((new Date(range.end) - new Date(range.start)) / 86400000) + 1;
       const [now, before] = await Promise.all([
-        supabase.rpc("kpis_for_range", { p_start: customStart, p_end: customEnd }),
-        supabase.rpc("kpis_for_range", { p_start: addDays(priorEnd, -(days - 1)), p_end: priorEnd }),
+        supabase.rpc("kpis_for_range", { p_start: range.start, p_end: range.end }),
+        supabase.rpc("kpis_for_range", { p_start: prior.start, p_end: prior.end }),
       ]);
       if (!active) return;
       if (now.error) setError(now.error.message);
       const first = res => (Array.isArray(res.data) ? res.data[0] || null : res.data);
-      setRangeRow({ current: first(now), prior: before.error ? null : first(before), days });
+      setRangeRow({ current: first(now), prior: before.error ? null : first(before), days, range });
       setRangeBusy(false);
     })();
     return () => { active = false; };
-  }, [mode, customStart, customEnd]);
+  }, [mode, selectedMonth, customStart, customEnd]);
 
   if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spinner size={22} /></div>;
   if (error) return <Panel style={{ color: C.negative }}>{error}</Panel>;
@@ -129,7 +169,7 @@ export default function Overview({ s, lang }) {
   const priorStart = firstIndex - shown.length;
   const priorWeeks = shown.length && priorStart >= 0 ? weeks.slice(priorStart, firstIndex) : [];
 
-  const exactRange = mode === "custom" && rangeRow?.current;
+  const exactRange = (mode === "custom" || mode === "month") && rangeRow?.current;
   const current = exactRange
     ? deriveWeeklyKpis(rangeRow.current)
     : (shown.length ? deriveWeeklyKpis(aggregateWeeklyRows(shown.map(w => w.raw))) : {});
@@ -232,9 +272,11 @@ export default function Overview({ s, lang }) {
       </div>
 
       <div style={{ fontSize: 11.5, color: C.inkFaint, marginBottom: 16, lineHeight: 1.5 }}>
-        {mode === "custom"
-          ? [s.ov.exactDaysNote, ...rangeCaveats].join(" ")
-          : mode === "week" ? s.ov.wholeWeeksNote : `${s.ov.wholeWeeksNote} ${s.ov.weekGrainOnly}`}
+        {/* Month and custom both read exact calendar days now; only the week
+            picker still snaps to a Monday-to-Sunday bucket. */}
+        {mode === "week"
+          ? s.ov.wholeWeeksNote
+          : [s.ov.exactDaysNote, ...rangeCaveats].join(" ")}
       </div>
 
       {!shown.length && !exactRange && <Panel style={{ marginBottom: 16, color: C.inkDim, fontSize: 12.5 }}>{s.ov.noWeeks}</Panel>}
