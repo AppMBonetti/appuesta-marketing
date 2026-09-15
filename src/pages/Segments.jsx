@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, Search, X } from "lucide-react";
+import { Download, Search, X, UserMinus } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { downloadCsv } from "../lib/csv";
@@ -58,22 +58,35 @@ export default function Segments({ s, lang }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [excluding, setExcluding] = useState(null);
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      const [p, sum] = await Promise.all([
-        supabase.from("player_lifecycle").select("*").order("deposits", { ascending: false }),
-        supabase.from("lifecycle_summary").select("*"),
-      ]);
-      if (!active) return;
-      if (p.error) setError(p.error.message);
-      setPlayers(p.data || []);
-      setSummary(sum.data || []);
-      setLoading(false);
-    })();
-    return () => { active = false; };
-  }, []);
+  // Excluding a player removes them from every total on the dashboard, so it
+  // asks for a reason and then reloads rather than hiding the row locally and
+  // letting the figures above disagree with the list below.
+  async function excludePlayer(player) {
+    const reason = window.prompt(s.seg.excludePrompt.replace("{player}", player.username || player.name || player.id));
+    if (reason === null) return;
+    setExcluding(player.id);
+    const { error: err } = await supabase.rpc("set_player_excluded", {
+      p_player_id: player.id, p_excluded: true, p_reason: reason,
+    });
+    setExcluding(null);
+    if (err) { setError(err.message); return; }
+    load();
+  }
+
+  async function load() {
+    const [p, sum] = await Promise.all([
+      supabase.from("player_lifecycle").select("*").order("deposits", { ascending: false }),
+      supabase.from("lifecycle_summary").select("*"),
+    ]);
+    if (p.error) setError(p.error.message);
+    setPlayers(p.data || []);
+    setSummary(sum.data || []);
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const tiers = useMemo(
     () => [...new Set(players.map(p => p.vip_tier).filter(Boolean))].sort(),
@@ -227,7 +240,7 @@ export default function Segments({ s, lang }) {
                   s.seg.cols.deposits, s.seg.cols.depositCount, s.seg.cols.ggr, s.seg.cols.bets,
                   s.seg.cols.stake, s.seg.cols.avgStake, s.seg.cols.topSport,
                   s.seg.cols.lastActivity, s.seg.cols.daysInactive,
-                  s.seg.cols.lastLogin].map(h => <th key={h} style={th}>{h}</th>)}
+                  s.seg.cols.lastLogin, ""].map((h, i) => <th key={h || `act${i}`} style={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -284,6 +297,18 @@ export default function Segments({ s, lang }) {
                         )}
                       </>
                     )}
+                  </td>
+                  <td style={{ ...td, width: "1%" }}>
+                    {/* Removes the player from every figure on the dashboard,
+                        not just from this list, so it asks for a reason. */}
+                    <button
+                      onClick={() => excludePlayer(p)}
+                      disabled={excluding === p.id}
+                      title={s.seg.excludeHint}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 9px", borderRadius: 7, border: `1px solid ${C.panelBorder}`, background: "transparent", color: C.inkFaint, fontSize: 11.5, cursor: excluding === p.id ? "default" : "pointer", opacity: excluding === p.id ? 0.5 : 1 }}
+                    >
+                      <UserMinus size={12} /> {s.seg.exclude}
+                    </button>
                   </td>
                 </tr>
               ))}

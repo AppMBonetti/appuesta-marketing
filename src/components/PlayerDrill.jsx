@@ -25,6 +25,8 @@ const CSV_COLUMNS = [
   { label: "total_deposit_amount_dop", value: p => p.total_deposit_amount },
   { label: "total_deposit_count", value: p => p.total_deposit_count },
   { label: "total_ggr_dop", value: p => p.total_ggr_sportsbook },
+  { label: "last_login", value: p => p.last_login_at },
+  { label: "days_since_login", value: p => p.days_since_login },
 ];
 
 export default function PlayerDrill({ s, lang, metric, week, onClose }) {
@@ -40,8 +42,11 @@ export default function PlayerDrill({ s, lang, metric, week, onClose }) {
     setLoading(true);
     (async () => {
       const { data, error: err } = await supabase
-        .from("players")
-        .select("id, name, email, vip_tier, registered_at, first_deposit_date, first_deposit_amount, total_deposit_amount, total_deposit_count, total_ggr_sportsbook")
+        // player_directory, not players: it already excludes internal and
+        // manually excluded accounts and carries login recency, so the list
+        // behind a number holds exactly the people that number counted.
+        .from("player_directory")
+        .select("*")
         .gte(spec.column, week)
         .lt(spec.column, addDays(week, 7))
         .order(spec.column);
@@ -105,7 +110,8 @@ export default function PlayerDrill({ s, lang, metric, week, onClose }) {
                   <tr>
                     {[s.drill.cols.player, s.drill.cols.email, s.drill.cols.tier, s.drill.cols.registered,
                       s.drill.cols.ftdDate, s.drill.cols.ftdAmount, s.drill.cols.deposits,
-                      s.drill.cols.count, s.drill.cols.ggr].map(h => <th key={h} style={th}>{h}</th>)}
+                      s.drill.cols.count, s.drill.cols.ggr,
+                      s.seg.cols.lastLogin].map(h => <th key={h} style={th}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -124,6 +130,9 @@ export default function PlayerDrill({ s, lang, metric, week, onClose }) {
                       <td style={td}>{fmtDOP(p.total_deposit_amount)}</td>
                       <td style={{ ...td, color: C.inkDim }}>{p.total_deposit_count ?? 0}</td>
                       <td style={td}>{fmtDOP(p.total_ggr_sportsbook)}</td>
+                      <td style={{ ...td, color: p.days_since_login != null && p.days_since_login <= 7 ? C.positive : C.inkDim }}>
+                        {date(p.last_login_at)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

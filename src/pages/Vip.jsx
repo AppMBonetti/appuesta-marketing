@@ -17,6 +17,9 @@ const CSV_COLUMNS = [
   { label: "registered_at", value: p => p.registered_at },
   { label: "first_deposit_date", value: p => p.first_deposit_date },
   { label: "last_deposit_date", value: p => p.last_deposit_date },
+  { label: "days_since_deposit", value: p => p.days_since_deposit },
+  { label: "last_login", value: p => p.last_login_at },
+  { label: "days_since_login", value: p => p.days_since_login },
   { label: "total_deposit_amount_dop", value: p => p.total_deposit_amount },
   { label: "total_deposit_count", value: p => p.total_deposit_count },
   { label: "total_ggr_dop", value: p => p.total_ggr_sportsbook },
@@ -194,7 +197,8 @@ export default function Vip({ s, lang }) {
                             <thead>
                               <tr>
                                 {[s.tierDrill.cols.player, s.tierDrill.cols.playerId, s.tierDrill.cols.deposits,
-                                  s.tierDrill.cols.count, s.tierDrill.cols.lastDeposit, s.tierDrill.cols.ggr,
+                                  s.tierDrill.cols.count, s.tierDrill.cols.lastDeposit,
+                                  s.tierDrill.cols.lastLogin, s.tierDrill.cols.ggr,
                                   s.tierDrill.cols.bets, s.tierDrill.cols.avgBet, s.tierDrill.cols.topSport,
                                   s.tierDrill.cols.wagered, s.tierDrill.cols.progress].map(h => <th key={h} style={thStyle}>{h}</th>)}
                               </tr>
@@ -207,6 +211,11 @@ export default function Vip({ s, lang }) {
                                   <td style={tdStyle}>{fmtDOP(p.total_deposit_amount)}</td>
                                   <td style={{ ...tdStyle, color: C.inkDim }}>{p.total_deposit_count ?? 0}</td>
                                   <td style={{ ...tdStyle, color: C.inkDim }}>{fmtDate(p.last_deposit_date, s, lang)}</td>
+                                  {/* A quiet depositor who still logs in is a
+                                      different problem from one who has gone. */}
+                                  <td style={{ ...tdStyle, color: p.days_since_login != null && p.days_since_login <= 7 ? C.positive : C.inkDim }}>
+                                    {fmtDate(p.last_login_at, s, lang)}
+                                  </td>
                                   <td style={tdStyle}>{fmtDOP(p.total_ggr_sportsbook)}</td>
                                   <td style={{ ...tdStyle, color: C.inkDim }}>{Number(p.bets) || 0}</td>
                                   <td style={tdStyle}>{p.avg_stake == null ? "—" : fmtDOP(p.avg_stake)}</td>
