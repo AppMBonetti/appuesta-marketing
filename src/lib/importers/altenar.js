@@ -22,6 +22,12 @@ const HEADER_MAP = {
   "currency": "currency",
   "status": "status",
   "bonus": "bonus",
+  // Cash and bonus money are separate columns: `stake` and `winnings` count
+  // only cash, and a bet funded entirely from a bonus reads stake 0 with a
+  // bonus stake beside it. Leaving these out silently dropped a quarter of all
+  // bets from turnover and from GGR.
+  "bonus stake": "bonus_stake",
+  "bonus winnings": "bonus_winnings",
 };
 
 const REQUIRED_FIELDS = ["bet_id"];
@@ -104,6 +110,8 @@ export async function parseAltenarFile(file, timeZone = SOURCE_TIMEZONE) {
       currency,
       status,
       bonus: toNumber(r.bonus) ?? 0,
+      bonus_stake: toNumber(r.bonus_stake) ?? 0,
+      bonus_winnings: toNumber(r.bonus_winnings) ?? 0,
       imported_at: now,
     });
   }
