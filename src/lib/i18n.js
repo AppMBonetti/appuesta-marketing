@@ -144,7 +144,7 @@ export const STRINGS = {
       noPriorPeriod: "Sin periodo anterior con qué comparar.",
       weekGrainOnly: "Depositantes, jugadores activos y ARPU solo se reportan por semana: un jugador activo en dos semanas se contaría dos veces al sumarlas.",
       legendReg: "Registros", legendFtd: "FTDs", legendCpl: "CPL", legendCpa: "CPA (FTD)",
-      legendGgr: "GGR", legendDeposits: "Depósitos",
+      legendGgr: "GGR", legendCashGgr: "GGR en efectivo", legendDeposits: "Depósitos",
     },
     tierDrill: {
       hint: "Haz clic en un nivel para ver sus jugadores",
@@ -428,7 +428,7 @@ export const STRINGS = {
       noPriorPeriod: "No earlier period to compare against.",
       weekGrainOnly: "Depositors, active players and ARPU are reported at week grain only: a player active in two weeks would be counted twice by adding them.",
       legendReg: "Registrations", legendFtd: "FTDs", legendCpl: "CPL", legendCpa: "CPA (FTD)",
-      legendGgr: "GGR", legendDeposits: "Deposits",
+      legendGgr: "GGR", legendCashGgr: "Cash GGR", legendDeposits: "Deposits",
     },
     tierDrill: {
       hint: "Click a tier to see its players",
