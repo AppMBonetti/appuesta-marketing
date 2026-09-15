@@ -36,7 +36,10 @@ const EXPECTED_CURRENCY = "DOP";
 // Statuses seen in real exports. A bet whose stake is handed back never counted
 // as wagering, so it is excluded from GGR and from VIP tier qualification —
 // this mirrors what Altenar itself leaves out of its "Totals of report" sheet.
-const RETURNED_STAKE_STATUSES = ["Void", "VoidCashout", "Rejected"];
+// "RejectedByPortal" is the portal-side counterpart of "Rejected" and is
+// likewise left out of Altenar's own "Totals of report" — excluding both, plus
+// Void and VoidCashout, reproduces that sheet's stake figure to the cent.
+const RETURNED_STAKE_STATUSES = ["Void", "VoidCashout", "Rejected", "RejectedByPortal"];
 const SETTLED_STATUSES = ["Win", "Lost", "Open", "Cashout"];
 const KNOWN_STATUSES = [...RETURNED_STAKE_STATUSES, ...SETTLED_STATUSES];
 

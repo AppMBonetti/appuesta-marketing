@@ -182,8 +182,8 @@ export default function ManualCorrections({ s, lang }) {
 
       <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 12, lineHeight: 1.5, maxWidth: 720 }}>
         {lang === "es"
-          ? "Cada métrica es independiente: si solo llenas registros, los FTDs siguen viniendo de InTarget. Las celdas corregidas aparecen marcadas en el reporte semanal."
-          : "Each metric is independent: fill in only registrations and FTDs keep coming from InTarget. Corrected cells are badged in the weekly report."}
+          ? "Cada métrica es independiente: si solo llenas registros, los FTDs siguen viniendo del reporte de jugadores. Las celdas corregidas aparecen marcadas en el reporte semanal."
+          : "Each metric is independent: fill in only registrations and FTDs keep coming from the player report. Corrected cells are badged in the weekly report."}
       </div>
     </>
   );

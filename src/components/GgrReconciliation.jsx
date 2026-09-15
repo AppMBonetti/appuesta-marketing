@@ -7,7 +7,8 @@ import { SectionHeading, Panel, Spinner, fmtDOP } from "./ui";
 /**
  * Revenue figures are only trustworthy while the bet-level maths agrees with
  * the operator's own reporting, so both sides are shown rather than assumed.
- * InTarget arrives at GGR through a separate pipeline, which makes it a genuine
+ * The player report states each player's sportsbook GGR from the platform's own
+ * ledger rather than from the bet list, which makes it a genuine
  * third-party check rather than a restatement of the same numbers.
  */
 export default function GgrReconciliation({ s }) {
@@ -29,9 +30,9 @@ export default function GgrReconciliation({ s }) {
   if (!row || Number(row.bets_counted) === 0) return null;
 
   const ggr = Number(row.ggr);
-  const intarget = Number(row.intarget_ggr);
+  const reported = Number(row.report_ggr);
   const openLiability = Number(row.open_liability);
-  const variance = ggr - intarget;
+  const variance = ggr - reported;
   // The open bets are the expected reason the two sources differ; anything well
   // beyond that is a discrepancy worth chasing rather than explaining away.
   const explainedByOpen = Math.abs(Math.abs(variance) - openLiability) < openLiability * 0.25;
@@ -51,7 +52,7 @@ export default function GgrReconciliation({ s }) {
         {line(s.recon.settled, `− ${fmtDOP(row.settled_winnings)}`)}
         {line(s.recon.ggr, fmtDOP(ggr), true)}
         {line(s.recon.openLia, fmtDOP(openLiability))}
-        {line(s.recon.intarget, fmtDOP(intarget))}
+        {line(s.recon.reported, fmtDOP(reported))}
         <div style={{ display: "flex", justifyContent: "space-between", gap: 20, padding: "10px 0 0" }}>
           <span style={{ fontSize: 12.5, color: C.inkDim }}>{s.recon.variance}</span>
           <span style={{ fontSize: 13, fontWeight: 600, color: explainedByOpen ? C.inkDim : C.negative }}>

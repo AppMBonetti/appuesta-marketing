@@ -5,37 +5,33 @@ import { C } from "../lib/theme";
 import { SectionHeading, Panel, Spinner, fmtDOP } from "../components/ui";
 import DataCoverage from "../components/DataCoverage";
 import DataHealth from "../components/DataHealth";
-import SnapshotRollback from "../components/SnapshotRollback";
-import { parseIntargetFile } from "../lib/importers/intarget";
 import { parseAltenarFile } from "../lib/importers/altenar";
 import { parseGa4File } from "../lib/importers/ga4";
 import { parseInstagramFile } from "../lib/importers/instagram";
-import { parsePaymentsFile } from "../lib/importers/payments";
-import { parseRegistrationsFile } from "../lib/importers/registrations";
-import { parseFtdListFile } from "../lib/importers/ftdList";
+import { parsePlayerReportFile } from "../lib/importers/playerReport";
+import { parsePaymentsReportFile } from "../lib/importers/paymentsReport";
 import { upsertInChunks, SOURCE_TIMEZONE, IMPORT_TIMEZONES, timezoneShiftHours, zoneCancellingShift } from "../lib/importers/parseWorkbook";
 
-// bets.external_user_id has a FK to players.id — if a bet references a player
-// not yet imported, null out the link rather than failing the whole batch.
-async function reconcileExternalUserIds(bets) {
-  const ids = [...new Set(bets.map(b => b.external_user_id).filter(Boolean))];
-  if (!ids.length) return { reconciled: bets, orphaned: 0 };
-  const validIds = new Set();
-  for (let i = 0; i < ids.length; i += 500) {
-    const chunk = ids.slice(i, i + 500);
+// How many of a batch's bets belong to players the dashboard has never been
+// told about. The Altenar export routinely arrives before the week's player
+// report, so this is reported rather than corrected: the bets still count
+// towards house totals, and the number tells Marcos how much of the week's
+// activity is waiting on the backoffice file.
+async function countUnmatchedPlayers(bets) {
+  // player_key is generated in the database; derive the same value here so the
+  // check runs before the rows are sent rather than after.
+  const keys = [...new Set(
+    bets.map(b => (b.external_user_id ? String(b.external_user_id).slice(-9) : null)).filter(Boolean)
+  )];
+  if (!keys.length) return 0;
+  const known = new Set();
+  for (let i = 0; i < keys.length; i += 500) {
+    const chunk = keys.slice(i, i + 500);
     const { data, error } = await supabase.from("players").select("id").in("id", chunk);
     if (error) throw error;
-    for (const row of data) validIds.add(row.id);
+    for (const row of data) known.add(row.id);
   }
-  let orphaned = 0;
-  const reconciled = bets.map(b => {
-    if (b.external_user_id && !validIds.has(b.external_user_id)) {
-      orphaned += 1;
-      return { ...b, external_user_id: null };
-    }
-    return b;
-  });
-  return { reconciled, orphaned };
+  return keys.filter(k => !known.has(k)).length;
 }
 
 // The import log stores plain dates; the parsers hand back ISO timestamps.
@@ -58,11 +54,13 @@ function toLocalDay(iso) {
 // Zone a report was last declared to have been generated in. Stored so a later
 // upload can tell an intentional zone change apart from a template accident.
 const TZ_SETTING_KEY = "altenar_source_tz";
-// How bets were read before the zone was selectable, so an unset installation
-// keeps reading them the same way and re-importing an old file stays a no-op.
-// Verified against the exports themselves: MLB fixtures in the loaded data land
-// on each park's published start time only under this reading.
-const DEFAULT_SOURCE_TZ = "America/Santo_Domingo";
+// Altenar's current export template writes UTC. Established by anchoring every
+// player's first bet against their registration time: read as UTC nobody bets
+// before they exist and the quickest do so within a minute, while an hour
+// either way makes that impossible or implausible. Earlier exports were UTC-5 --
+// the same bets came back shifted five hours -- so the zone stays selectable and
+// a mismatch against stored bets is still blocked below.
+const DEFAULT_SOURCE_TZ = "UTC";
 
 /**
  * Compares an incoming batch of bets against what is already stored, by bet_id.
@@ -108,14 +106,15 @@ async function compareWithStored(bets) {
   return { known, shift: null };
 }
 
+// The two backoffice exports and the Altenar bet list are the source of truth
+// for players, money and betting. GA4 and Instagram sit apart: they describe
+// marketing, not players, and nothing on the acquisition figures depends on them.
 const CARD_DEFS = [
-  { source: "Payments", labelKey: "paymentsCard", noteKey: "paymentsNote" },
-  { source: "Registrations", labelKey: "registrationsCard", noteKey: "registrationsNote" },
-  { source: "FTD", labelKey: "ftdCard", noteKey: "ftdNote" },
-  { source: "Altenar", labelKey: "altenarCard" },
+  { source: "Player Report", labelKey: "playerReportCard", noteKey: "playerReportNote" },
+  { source: "Payments Report", labelKey: "paymentsReportCard", noteKey: "paymentsReportNote" },
+  { source: "Altenar", labelKey: "altenarCard", noteKey: "altenarNote" },
   { source: "GA4", labelKey: "ga4Card" },
   { source: "Instagram", labelKey: "instagramCard" },
-  { source: "InTarget", labelKey: "intargetCard" },
 ];
 
 export default function Imports({ s, lang }) {
@@ -171,10 +170,10 @@ export default function Imports({ s, lang }) {
     try {
       setPhase(source, "parsing");
 
-      if (source === "Payments") {
-        const { transactions, unmatchedHeaders, unknownTypes, unexpectedCurrencies,
-                expectedCurrency, summary, coverage } = await parsePaymentsFile(file);
-        if (transactions.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
+      if (source === "Player Report") {
+        const { players, unmatchedHeaders, unexpectedCurrencies, expectedCurrency,
+                summary, coverage } = await parsePlayerReportFile(file);
+        if (players.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
 
         if (unexpectedCurrencies.length) {
           throw new Error(
@@ -185,18 +184,19 @@ export default function Imports({ s, lang }) {
         }
 
         setPhase(source, "importing");
-        // transaction_id is the primary key, so re-exporting overlapping days
-        // updates each row in place — including one that has since settled.
-        await upsertInChunks(supabase, "payment_transactions", transactions, "transaction_id");
+        // id is the primary key and the report restates every player each time,
+        // so re-uploading an overlapping export updates in place rather than
+        // duplicating anyone.
+        await upsertInChunks(supabase, "players", players, "id");
 
-        // Deposit totals on the player are derived, never imported, so they can
-        // never drift from the transactions they summarize.
-        const { error: refreshErr } = await supabase.rpc("refresh_player_deposit_totals");
-        if (refreshErr) throw refreshErr;
+        // Staff and QA accounts have to be flagged before anything counts them:
+        // they register, deposit and bet exactly like real players.
+        const { error: flagErr } = await supabase.rpc("refresh_internal_flags");
+        if (flagErr) throw flagErr;
 
         setPhase(source, "logging");
         const { error: logErr } = await supabase.from("data_imports").insert({
-          source, filename: file.name, row_count: transactions.length, status: "success",
+          source, filename: file.name, row_count: players.length, status: "success",
           period_start: toLocalDay(coverage.start), period_end: toLocalDay(coverage.end),
         });
         if (logErr) throw logErr;
@@ -205,46 +205,68 @@ export default function Imports({ s, lang }) {
         const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
         if (rpcErr) throw rpcErr;
 
-        setPhase(source, "done", { rowCount: transactions.length, unmatchedHeaders, unknownTypes, summary });
-      } else if (source === "Registrations") {
-        const { players, unmatchedHeaders, coverage } = await parseRegistrationsFile(file);
-        if (players.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
+        setPhase(source, "done", {
+          rowCount: players.length, unmatchedHeaders, summary,
+          // What the file actually knows about, which is often earlier than the
+          // range in its filename.
+          knowsThrough: toLocalDay(coverage.end),
+        });
+      } else if (source === "Payments Report") {
+        const { periods, period, unmatchedHeaders, unparsedPlayers,
+                unexpectedCurrencies, expectedCurrency, summary } = await parsePaymentsReportFile(file);
+        if (periods.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
+
+        if (unexpectedCurrencies.length) {
+          throw new Error(
+            s.currencyBlocked
+              .replace("{found}", unexpectedCurrencies.join(", "))
+              .replaceAll("{expected}", expectedCurrency)
+          );
+        }
+
+        // The file states its own totals. Reproducing them proves every row was
+        // read and the TOTAL line was not counted as a player.
+        const stated = summary.reportedTotal?.depositAmount;
+        if (stated != null && Math.abs(stated - summary.depositAmount) > 0.01) {
+          throw new Error(
+            s.totalMismatch
+              .replace("{ours}", fmtDOP(summary.depositAmount))
+              .replace("{theirs}", fmtDOP(stated))
+          );
+        }
 
         setPhase(source, "importing");
-        await upsertInChunks(supabase, "players", players, "id");
+        // A range that overlaps one already loaded is a re-cut of the same days,
+        // not new money. It is stored for reconciliation and left out of every
+        // total, so uploading the month view after the weeks cannot double them.
+        const { data: existing, error: overlapErr } = await supabase
+          .from("deposit_periods")
+          .select("period_start, period_end")
+          .lte("period_start", period.end)
+          .gte("period_end", period.start)
+          .limit(200);
+        if (overlapErr) throw overlapErr;
+        const overlapsOther = (existing || []).some(
+          r => !(r.period_start === period.start && r.period_end === period.end)
+        );
+        const scope = overlapsOther ? "validation" : "primary";
+        await upsertInChunks(
+          supabase, "deposit_periods",
+          periods.map(r => ({ ...r, scope })),
+          "period_start,period_end,player_id"
+        );
+
+        const { error: refreshErr } = await supabase.rpc("refresh_player_deposit_totals");
+        if (refreshErr) throw refreshErr;
 
         setPhase(source, "logging");
         const { error: logErr } = await supabase.from("data_imports").insert({
-          source, filename: file.name, row_count: players.length, status: "success",
-          period_start: toLocalDay(coverage.start), period_end: toLocalDay(coverage.end),
+          source, filename: file.name, row_count: periods.length, status: "success",
+          period_start: period.start, period_end: period.end,
         });
         if (logErr) throw logErr;
 
-        setPhase(source, "done", { rowCount: players.length, unmatchedHeaders });
-      } else if (source === "FTD") {
-        const { players, unmatchedHeaders, amountKnown, coverage } = await parseFtdListFile(file);
-        if (players.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
-
-        setPhase(source, "importing");
-        // This file owns only the first-deposit fields. A null registration date
-        // is dropped rather than written, so it cannot blank a date the
-        // registration export already supplied.
-        const rows = players.map(p => {
-          const row = { id: p.id, first_deposit_date: p.first_deposit_date,
-            first_deposit_amount: p.first_deposit_amount, imported_at: p.imported_at };
-          if (p.registered_at) row.registered_at = p.registered_at;
-          return row;
-        });
-        await upsertInChunks(supabase, "players", rows, "id");
-
-        setPhase(source, "logging");
-        const { error: logErr } = await supabase.from("data_imports").insert({
-          source, filename: file.name, row_count: players.length, status: "success",
-          period_start: toLocalDay(coverage.start), period_end: toLocalDay(coverage.end),
-        });
-        if (logErr) throw logErr;
-
-        setPhase(source, "done", { rowCount: players.length, unmatchedHeaders, amountKnown });
+        setPhase(source, "done", { rowCount: periods.length, unmatchedHeaders, unparsedPlayers, summary, period, scope });
       } else if (source === "Instagram") {
         const { rows, unmatchedHeaders, coverage } = await parseInstagramFile(file);
         if (rows.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
@@ -275,38 +297,6 @@ export default function Imports({ s, lang }) {
         if (logErr) throw logErr;
 
         setPhase(source, "done", { rowCount: rows.length, unmatchedHeaders });
-      } else if (source === "InTarget") {
-        const { players, unmatchedHeaders, coverage } = await parseIntargetFile(file);
-        if (players.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
-
-        setPhase(source, "importing");
-        await upsertInChunks(supabase, "players", players, "id");
-
-        setPhase(source, "logging");
-        const { error: logErr } = await supabase.from("data_imports").insert({
-          source, filename: file.name, row_count: players.length, status: "success",
-          period_start: toLocalDay(coverage.start), period_end: toLocalDay(coverage.end),
-        });
-        if (logErr) throw logErr;
-
-        setPhase(source, "assigning");
-        const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
-        if (rpcErr) throw rpcErr;
-
-        // Players hold only current state, so each import is also recorded as a
-        // dated snapshot — that history is what deposit trends are computed from.
-        setPhase(source, "snapshotting");
-        const { error: snapErr } = await supabase.rpc("snapshot_players", { snapshot_day: localDay() });
-        if (snapErr) throw snapErr;
-
-        // Recover first-deposit amounts InTarget doesn't export: exact for
-        // single-deposit players, and from the 0 -> 1 snapshot crossing for
-        // everyone who converts from here on. Runs after the snapshot so
-        // today's crossing is already visible to it.
-        const { error: ftdErr } = await supabase.rpc("derive_first_deposit_amounts");
-        if (ftdErr) throw ftdErr;
-
-        setPhase(source, "done", { rowCount: players.length, unmatchedHeaders });
       } else {
         const { bets, unmatchedHeaders, unknownStatuses, unexpectedCurrencies, expectedCurrency, coverage } =
           await parseAltenarFile(file, sourceTz);
@@ -363,12 +353,12 @@ export default function Imports({ s, lang }) {
           storedTz.current = sourceTz;
         }
 
-        const { reconciled, orphaned } = await reconcileExternalUserIds(bets);
+        const unmatched = await countUnmatchedPlayers(bets);
         // bet_id is the primary key and every column is written, so a bet that
         // appears in two overlapping reports is updated in place: an Open bet
         // that later settles takes its new status, winnings and settlement date
         // rather than being counted a second time.
-        await upsertInChunks(supabase, "bets", reconciled, "bet_id");
+        await upsertInChunks(supabase, "bets", bets, "bet_id");
 
         setPhase(source, "logging");
         const { error: logErr } = await supabase.from("data_imports").insert({
@@ -385,7 +375,7 @@ export default function Imports({ s, lang }) {
         const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
         if (rpcErr) throw rpcErr;
 
-        setPhase(source, "done", { rowCount: bets.length, orphaned, unmatchedHeaders, unknownStatuses, known, retimed });
+        setPhase(source, "done", { rowCount: bets.length, unmatched, unmatchedHeaders, unknownStatuses, known, retimed });
       }
 
       loadLog();
@@ -407,7 +397,7 @@ export default function Imports({ s, lang }) {
         {CARD_DEFS.map(card => {
           const last = lastBySource[card.source];
           const state = cardState[card.source] || {};
-          const busy = ["parsing", "importing", "logging", "assigning", "snapshotting"].includes(state.phase);
+          const busy = ["parsing", "importing", "logging", "assigning"].includes(state.phase);
           return (
             <Panel key={card.source} style={{ flex: 1, minWidth: 280 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -472,25 +462,43 @@ export default function Imports({ s, lang }) {
                   <CheckCircle2 size={14} style={{ flexShrink: 0, marginTop: 1 }} />
                   <span>
                     {state.rowCount.toLocaleString()} {s.importSuccess}
-                    {state.orphaned > 0 && (lang === "es"
-                      ? ` — ${state.orphaned} sin jugador asociado aún`
-                      : ` — ${state.orphaned} without a matching player yet`)}
-                    {state.summary && (
+                    {state.unmatched > 0 && (
                       <div style={{ color: C.inkDim, marginTop: 4 }}>
-                        {s.depositsLoaded
+                        {s.betsUnmatched.replace("{n}", state.unmatched.toLocaleString())}
+                      </div>
+                    )}
+                    {state.knowsThrough && (
+                      <div style={{ color: C.inkDim, marginTop: 4 }}>
+                        {s.reportKnowsThrough.replace("{d}", state.knowsThrough)}
+                      </div>
+                    )}
+                    {state.summary?.depositors != null && (
+                      <div style={{ color: C.inkDim, marginTop: 4 }}>
+                        {s.playersLoaded
+                          .replace("{d}", state.summary.depositors.toLocaleString())
+                          .replace("{f}", state.summary.ftdKnown.toLocaleString())}
+                        {state.summary.ftdDateMissing > 0 && (
+                          <div style={{ color: C.negative }}>
+                            {s.ftdDateMissing.replace("{n}", state.summary.ftdDateMissing.toLocaleString())}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {state.period && (
+                      <div style={{ color: C.inkDim, marginTop: 4 }}>
+                        {s.depositsForPeriod
+                          .replace("{a}", state.period.start)
+                          .replace("{b}", state.period.end)
                           .replace("{n}", state.summary.depositCount.toLocaleString())
                           .replace("{amt}", fmtDOP(state.summary.depositAmount))}
-                        <div>{s.promoExcluded.replace("{n}", state.summary.promoCount.toLocaleString())}</div>
+                        {state.scope === "validation" && (
+                          <div style={{ color: C.negative }}>{s.periodValidationOnly}</div>
+                        )}
                       </div>
                     )}
-                    {state.amountKnown != null && (
-                      <div style={{ color: C.inkDim, marginTop: 4 }}>
-                        {s.health.ftdOk.replace("{t}", state.amountKnown.toLocaleString())}
-                      </div>
-                    )}
-                    {state.unknownTypes?.length > 0 && (
+                    {state.unparsedPlayers?.length > 0 && (
                       <div style={{ color: C.negative, marginTop: 4 }}>
-                        {s.unknownTypes}{state.unknownTypes.join(", ")}
+                        {s.unparsedPlayers.replace("{n}", String(state.unparsedPlayers.length))}
                       </div>
                     )}
                     {state.known > 0 && (
@@ -542,7 +550,6 @@ export default function Imports({ s, lang }) {
 
       <DataCoverage s={s} lang={lang} />
 
-      <SnapshotRollback s={s} lang={lang} />
 
       <div style={{ fontSize: 13, color: C.inkDim, marginBottom: 10 }}>{s.importHistory}</div>
       {loadingLog ? (
@@ -562,11 +569,8 @@ export default function Imports({ s, lang }) {
                   <td style={{ padding: "8px 14px", color: C.inkDim }}>{new Date(l.imported_at).toLocaleString(lang === "es" ? "es-DO" : "en-US")}</td>
                   <td style={{ padding: "8px 14px", color: C.inkFaint }}>{l.filename}</td>
                   <td style={{ padding: "8px 14px" }}>{l.row_count?.toLocaleString() ?? "—"}</td>
-                  <td style={{ padding: "8px 14px", color: l.reverted_at ? C.inkFaint : l.status === "success" ? C.positive : C.negative }}>
-                    {/* The log records what was uploaded, so a reverted import
-                        stays listed — but its data is no longer in the dashboard
-                        and the row has to say so. */}
-                    {l.reverted_at ? s.rollback.reverted : l.status}
+                  <td style={{ padding: "8px 14px", color: l.status === "success" ? C.positive : C.negative }}>
+                    {l.status}
                   </td>
                 </tr>
               ))}
