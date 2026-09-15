@@ -27,7 +27,7 @@ export const STRINGS = {
     },
     ret: {
       cohort: "Cohorte FTD", players: "FTDs", week: "Sem +", month: "Mes +",
-      activityNote: "La cohorte es la semana del primer depósito (FTD), no la del registro. “Sem +1” es la semana siguiente al FTD. Retención = jugadores de la cohorte con al menos una apuesta válida en esa semana (se excluyen anuladas y rechazadas). Quien se registra esta semana pero deposita la próxima entra en la cohorte de la próxima.",
+      activityNote: "La cohorte es la semana del primer depósito (FTD), no la del registro. Retención = jugadores de la cohorte que volvieron a DEPOSITAR en esa semana — no se cuenta la actividad de apuesta, porque apostar un bono no es volver a pagar. “Sem +0” es la semana del FTD, así que siempre da 100%. Quien se registra esta semana pero deposita la próxima entra en la cohorte de la próxima.",
       maturingNote: "Las celdas en gris todavía no cierran su ventana. Una cohorte registrada esta semana no ha terminado su semana 0, así que mostrar ese número lo haría parecer más bajo de lo que será.",
       tierNote: "El nivel VIP es el actual, no el que tenía el jugador en la semana 4 — los niveles se recalculan en cada importación.",
       noMature: "Todavía no hay cohortes con la semana 4 completa. Aparecerán cuando la primera cohorte cumpla 5 semanas.",
@@ -309,7 +309,7 @@ export const STRINGS = {
     },
     ret: {
       cohort: "FTD cohort", players: "FTDs", week: "Wk +", month: "Mo +",
-      activityNote: "The cohort is the week of the first deposit (FTD), not the registration week. “Wk +1” is the week after the FTD. Retention = players in the cohort with at least one valid bet that week (voided and rejected excluded). Someone who registers this week but deposits next week joins next week\u2019s cohort.",
+      activityNote: "The cohort is the week of the first deposit (FTD), not the registration week. Retention = players in the cohort who DEPOSITED again that week — betting activity is deliberately not counted, because spending a bonus is not paying again. “Wk +0” is the FTD week itself, so it is always 100%. Someone who registers this week but deposits next week joins next week\u2019s cohort.",
       maturingNote: "Grey cells have not closed their window yet. A cohort registered this week has not finished its week 0, so showing that number would make it look lower than it will be.",
       tierNote: "VIP tier is the player's current tier, not the one they held in week 4 — tiers are recomputed on every import.",
       noMature: "No cohort has completed week 4 yet. These appear once the first cohort turns five weeks old.",

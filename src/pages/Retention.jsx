@@ -88,7 +88,7 @@ export default function Retention({ s, lang }) {
     setLoading(true);
     (async () => {
       const [w, m, t] = await Promise.all([
-        supabase.from("cohort_retention_weekly").select("*").order("cohort_week"),
+        supabase.from("cohort_deposit_retention_weekly").select("*").order("cohort_week"),
         supabase.from("cohort_retention_monthly").select("*").order("cohort_month"),
         supabase.from("cohort_retention_by_tier").select("*").order("tier_order"),
       ]);
