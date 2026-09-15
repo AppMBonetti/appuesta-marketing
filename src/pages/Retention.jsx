@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { formatWeek, formatMonth, dateRangeLabel } from "../lib/period";
 import { SectionHeading, Panel, Spinner, EmptyState } from "../components/ui";
+import CohortDrill from "../components/CohortDrill";
 
 const WEEK_INDEXES = [1, 2, 3, 4, 5, 6, 7, 8];
 const MONTH_INDEXES = [1, 2, 3];
@@ -23,7 +24,7 @@ function cellStyle(pct, mature) {
   };
 }
 
-function Grid({ rows, indexes, keyField, labelFor, indexLabel, headerFor, s }) {
+function Grid({ rows, indexes, keyField, labelFor, indexLabel, headerFor, onCell, s }) {
   const th = { padding: "9px 12px", fontSize: 11.5, color: C.inkDim, fontWeight: 500, whiteSpace: "nowrap" };
   return (
     <div style={{ overflowX: "auto" }}>
@@ -44,9 +45,12 @@ function Grid({ rows, indexes, keyField, labelFor, indexLabel, headerFor, s }) {
                 const cell = row.cells[i];
                 const style = cellStyle(cell?.pct, cell?.mature);
                 return (
-                  <td key={i} style={{
+                  <td key={i}
+                    onClick={onCell && cell?.mature ? () => onCell(row[keyField], i) : undefined}
+                    style={{
                     ...style, padding: "8px 10px", fontSize: 12, textAlign: "center",
                     borderRadius: 7, minWidth: 54, fontVariantNumeric: "tabular-nums",
+                    cursor: onCell && cell?.mature ? "pointer" : "default",
                   }}
                   title={cell?.mature ? `${cell.retained} / ${row.players}`
                     : cell?.beyondCoverage ? s.ret.noCoverage : s.maturing}>
@@ -85,6 +89,7 @@ export default function Retention({ s, lang }) {
   const [monthly, setMonthly] = useState([]);
   const [byTier, setByTier] = useState([]);
   const [periodRows, setPeriodRows] = useState([]);
+  const [drill, setDrill] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -151,8 +156,13 @@ export default function Retention({ s, lang }) {
             <Panel>
               <Grid rows={periodGrid} indexes={periodKeys} keyField="cohort_week"
                 labelFor={v => formatWeek(v, lang)} indexLabel=""
-                headerFor={k => dateRangeLabel(k.split("|")[0], k.split("|")[1], lang)} s={s} />
+                headerFor={k => dateRangeLabel(k.split("|")[0], k.split("|")[1], lang)}
+                onCell={(cohort, key) => {
+                  const [start, end] = key.split("|");
+                  setDrill({ cohortWeek: cohort, period: { start, end } });
+                }} s={s} />
               <p style={note}>{s.ret.periodNote}</p>
+              <p style={note}>{s.ret.drill.hint}</p>
             </Panel>
           )
         ) : granularity === "week" ? (
@@ -174,6 +184,11 @@ export default function Retention({ s, lang }) {
             </Panel>
           )
         )
+      )}
+
+      {drill && (
+        <CohortDrill s={s} lang={lang} cohortWeek={drill.cohortWeek}
+          period={drill.period} onClose={() => setDrill(null)} />
       )}
 
       {!loading && !error && view === "segment" && (
