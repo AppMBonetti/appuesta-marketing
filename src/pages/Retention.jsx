@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
-import { formatWeek, formatMonth } from "../lib/period";
+import { formatWeek, formatMonth, dateRangeLabel } from "../lib/period";
 import { SectionHeading, Panel, Spinner, EmptyState } from "../components/ui";
 
 const WEEK_INDEXES = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -23,7 +23,7 @@ function cellStyle(pct, mature) {
   };
 }
 
-function Grid({ rows, indexes, keyField, labelFor, indexLabel, s }) {
+function Grid({ rows, indexes, keyField, labelFor, indexLabel, headerFor, s }) {
   const th = { padding: "9px 12px", fontSize: 11.5, color: C.inkDim, fontWeight: 500, whiteSpace: "nowrap" };
   return (
     <div style={{ overflowX: "auto" }}>
@@ -32,7 +32,7 @@ function Grid({ rows, indexes, keyField, labelFor, indexLabel, s }) {
           <tr>
             <th style={{ ...th, textAlign: "left" }}>{s.ret.cohort}</th>
             <th style={{ ...th, textAlign: "right" }}>{s.ret.players}</th>
-            {indexes.map(i => <th key={i} style={th}>{indexLabel} {i}</th>)}
+            {indexes.map(i => <th key={i} style={th}>{headerFor ? headerFor(i) : `${indexLabel} ${i}`}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -48,7 +48,8 @@ function Grid({ rows, indexes, keyField, labelFor, indexLabel, s }) {
                     ...style, padding: "8px 10px", fontSize: 12, textAlign: "center",
                     borderRadius: 7, minWidth: 54, fontVariantNumeric: "tabular-nums",
                   }}
-                  title={cell?.mature ? `${cell.retained} / ${row.players}` : s.maturing}>
+                  title={cell?.mature ? `${cell.retained} / ${row.players}`
+                    : cell?.beyondCoverage ? s.ret.noCoverage : s.maturing}>
                     {cell?.mature ? `${Number(cell.pct).toFixed(0)}%` : "·"}
                   </td>
                 );
@@ -69,6 +70,7 @@ function pivot(flatRows, keyField, indexField) {
     if (!byCohort.has(key)) byCohort.set(key, { [keyField]: key, players: row.players, cells: {} });
     byCohort.get(key).cells[row[indexField]] = {
       pct: row.pct, retained: row.retained, mature: row.mature,
+      beyondCoverage: row.beyond_coverage === true,
     };
   }
   return [...byCohort.values()].sort((a, b) => String(a[keyField]).localeCompare(String(b[keyField])));
@@ -76,28 +78,32 @@ function pivot(flatRows, keyField, indexField) {
 
 export default function Retention({ s, lang }) {
   const [view, setView] = useState("total");
-  const [granularity, setGranularity] = useState("week");
+  const [granularity, setGranularity] = useState("period");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [weekly, setWeekly] = useState([]);
   const [monthly, setMonthly] = useState([]);
   const [byTier, setByTier] = useState([]);
+  const [periodRows, setPeriodRows] = useState([]);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     (async () => {
-      const [w, m, t] = await Promise.all([
+      const [w, m, t, p] = await Promise.all([
         supabase.from("cohort_deposit_retention_weekly").select("*").order("cohort_week"),
         supabase.from("cohort_retention_monthly").select("*").order("cohort_month"),
         supabase.from("cohort_retention_by_tier").select("*").order("tier_order"),
+        supabase.from("cohort_deposit_retention_period").select("*")
+          .order("cohort_week").order("period_start"),
       ]);
       if (!active) return;
-      const failure = w.error || m.error || t.error;
+      const failure = w.error || m.error || t.error || p.error;
       if (failure) setError(failure.message);
       setWeekly(pivot(w.data || [], "cohort_week", "week_index"));
       setMonthly(pivot(m.data || [], "cohort_month", "month_index"));
       setByTier(t.data || []);
+      setPeriodRows(p.data || []);
       setLoading(false);
     })();
     return () => { active = false; };
@@ -106,6 +112,14 @@ export default function Retention({ s, lang }) {
   const hasWeekly = weekly.some(r => r.players > 0);
   const hasMonthly = monthly.some(r => r.players > 0);
   const matureTiers = byTier.filter(r => r.players > 0);
+  // Columns are whatever reporting periods have been uploaded, so the grid
+  // becomes weekly by itself once weekly payments files arrive.
+  const periodKeys = [...new Set(periodRows.map(r => `${r.period_start}|${r.period_end}`))].sort();
+  const periodGrid = pivot(
+    periodRows.map(r => ({ ...r, _key: `${r.period_start}|${r.period_end}` })),
+    "cohort_week", "_key"
+  );
+  const hasPeriod = periodGrid.some(r => r.players > 0);
   const note = { color: C.inkFaint, fontSize: 11.5, lineHeight: 1.6, margin: "10px 0 0", maxWidth: 760 };
 
   return (
@@ -115,7 +129,7 @@ export default function Retention({ s, lang }) {
         <div style={{ display: "flex", gap: 8 }}>
           {view === "total" && (
             <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
-              {["week", "month"].map(g => (
+              {["period", "week", "month"].map(g => (
                 <button key={g} onClick={() => setGranularity(g)} style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: granularity === g ? "#2A303B" : "transparent", color: granularity === g ? C.ink : C.inkDim }}>{s.granToggle[g]}</button>
               ))}
             </div>
@@ -132,7 +146,16 @@ export default function Retention({ s, lang }) {
       {error && <Panel style={{ color: C.negative, marginTop: 12 }}>{error}</Panel>}
 
       {!loading && !error && view === "total" && (
-        granularity === "week" ? (
+        granularity === "period" ? (
+          !hasPeriod ? <EmptyState s={s} /> : (
+            <Panel>
+              <Grid rows={periodGrid} indexes={periodKeys} keyField="cohort_week"
+                labelFor={v => formatWeek(v, lang)} indexLabel=""
+                headerFor={k => dateRangeLabel(k.split("|")[0], k.split("|")[1], lang)} s={s} />
+              <p style={note}>{s.ret.periodNote}</p>
+            </Panel>
+          )
+        ) : granularity === "week" ? (
           !hasWeekly ? <EmptyState s={s} /> : (
             <Panel>
               <Grid rows={weekly} indexes={WEEK_INDEXES} keyField="cohort_week"
