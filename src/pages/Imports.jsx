@@ -256,6 +256,12 @@ export default function Imports({ s, lang }) {
           "period_start,period_end,player_id"
         );
 
+        // Once narrower periods tile a wider one end to end, the block is the
+        // redundant copy and the weeks are the better record, so scopes are
+        // re-derived after every upload rather than fixed at insert time.
+        const { error: scopeErr } = await supabase.rpc("reconcile_deposit_period_scopes");
+        if (scopeErr) throw scopeErr;
+
         const { error: refreshErr } = await supabase.rpc("refresh_player_deposit_totals");
         if (refreshErr) throw refreshErr;
 
