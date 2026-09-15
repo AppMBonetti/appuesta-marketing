@@ -78,6 +78,10 @@ export function deriveWeeklyKpis(row) {
   const depositAmount = num(row?.deposit_amount);
   const depositors = num(row?.depositors);
   const ggr = num(row?.ggr);
+  // Turnover the house kept from cash wagers only. GGR above follows the
+  // backoffice and counts bonus-funded play, which is revenue the house never
+  // actually received, so both are carried rather than one standing for the other.
+  const cashGgr = num(row?.cash_ggr);
   // Players who actually wagered that week — the correct denominator for ARPU.
   // Depositors was wrong twice over: it counted only people who topped up, and
   // it was divided into an all-time GGR figure.
@@ -86,7 +90,7 @@ export function deriveWeeklyKpis(row) {
 
   return {
     spend, sessions, registrations, ftds, ftdRevenue, ftdRevenueKnown,
-    depositCount, depositAmount, depositors, ggr, activePlayers, arpuMedian,
+    depositCount, depositAmount, depositors, ggr, cashGgr, activePlayers, arpuMedian,
     ftdRevenueCoverage: ratio(ftdRevenueKnown, ftds),
     costPerSession: ratio(spend, sessions),
     costPerRegistration: ratio(spend, registrations),
@@ -151,6 +155,7 @@ export const WEEKLY_KPI_GROUPS = [
       { key: "depositAmount", format: "money", better: "up" },
       { key: "depositors", format: "int", better: "up" },
       { key: "ggr", format: "money", better: "up" },
+      { key: "cashGgr", format: "money", better: "up" },
       { key: "activePlayers", format: "int", better: "up" },
       { key: "arpu", format: "money", better: "up" },
       { key: "arpuMedian", format: "money", better: "up" },
@@ -178,7 +183,7 @@ export function wowChange(current, previous) {
 // Counts and amounts that are simply additive across weeks.
 const ADDITIVE_KPI_FIELDS = [
   "spend", "sessions", "registrations", "ftds", "ftd_revenue", "ftd_revenue_known",
-  "deposit_count", "deposit_amount", "ggr",
+  "deposit_count", "deposit_amount", "ggr", "cash_ggr",
 ];
 
 // Distinct-player figures and the median cannot be recovered from weekly rows:

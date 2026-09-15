@@ -208,7 +208,7 @@ export default function Overview({ s, lang }) {
     label: formatWeek(w.week, lang),
     registrations: w.registrations, ftds: w.ftds,
     cpl: w.costPerRegistration, cpa: w.costPerAcquisition,
-    ggr: w.ggr, deposits: w.depositAmount,
+    ggr: w.ggr, cashGgr: w.cashGgr, deposits: w.depositAmount,
   }));
 
   const axis = { stroke: C.inkFaint, fontSize: 11, tickLine: false, axisLine: false };
@@ -294,6 +294,11 @@ export default function Overview({ s, lang }) {
         <SparkTile {...tile("registrations", s.ov.legendReg, fmtInt, "up", C.accent)} />
         <SparkTile {...tile("ftds", s.ov.legendFtd, fmtInt, "up", C.accent)} />
         <SparkTile {...tile("ggr", s.ov.legendGgr, v => fmtDOP(v), "up", C.positive)} />
+        {/* Total GGR counts bonus-funded play, matching the backoffice. Cash GGR
+            is what players paid for in cash. Shown together because the gap
+            between them is the cost of the bonus programme, and a single GGR
+            figure hides it. */}
+        <SparkTile {...tile("cashGgr", s.ov.legendCashGgr, v => fmtDOP(v), "up", C.positive)} />
       </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 26 }}>
