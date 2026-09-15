@@ -5,8 +5,7 @@ import { formatWeek, formatMonth, dateRangeLabel } from "../lib/period";
 import { SectionHeading, Panel, Spinner, EmptyState } from "../components/ui";
 import CohortDrill from "../components/CohortDrill";
 
-const WEEK_INDEXES = [1, 2, 3, 4, 5, 6, 7, 8];
-const MONTH_INDEXES = [1, 2, 3];
+const MONTH_INDEXES = [0, 1, 2, 3];
 
 /** Heat scale for a retention percentage; immature cells never get a colour. */
 function cellStyle(pct, mature) {
@@ -85,7 +84,6 @@ export default function Retention({ s, lang }) {
   const [granularity, setGranularity] = useState("period");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [weekly, setWeekly] = useState([]);
   const [monthly, setMonthly] = useState([]);
   const [byTier, setByTier] = useState([]);
   const [periodRows, setPeriodRows] = useState([]);
@@ -95,17 +93,15 @@ export default function Retention({ s, lang }) {
     let active = true;
     setLoading(true);
     (async () => {
-      const [w, m, t, p] = await Promise.all([
-        supabase.from("cohort_deposit_retention_weekly").select("*").order("cohort_week"),
+      const [m, t, p] = await Promise.all([
         supabase.from("cohort_retention_monthly").select("*").order("cohort_month"),
         supabase.from("cohort_retention_by_tier").select("*").order("tier_order"),
         supabase.from("cohort_deposit_retention_period").select("*")
           .order("cohort_week").order("period_start"),
       ]);
       if (!active) return;
-      const failure = w.error || m.error || t.error || p.error;
+      const failure = m.error || t.error || p.error;
       if (failure) setError(failure.message);
-      setWeekly(pivot(w.data || [], "cohort_week", "week_index"));
       setMonthly(pivot(m.data || [], "cohort_month", "month_index"));
       setByTier(t.data || []);
       setPeriodRows(p.data || []);
@@ -114,7 +110,6 @@ export default function Retention({ s, lang }) {
     return () => { active = false; };
   }, []);
 
-  const hasWeekly = weekly.some(r => r.players > 0);
   const hasMonthly = monthly.some(r => r.players > 0);
   const matureTiers = byTier.filter(r => r.players > 0);
   // Columns are whatever reporting periods have been uploaded, so the grid
@@ -134,7 +129,7 @@ export default function Retention({ s, lang }) {
         <div style={{ display: "flex", gap: 8 }}>
           {view === "total" && (
             <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
-              {["period", "week", "month"].map(g => (
+              {["period", "month"].map(g => (
                 <button key={g} onClick={() => setGranularity(g)} style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: granularity === g ? "#2A303B" : "transparent", color: granularity === g ? C.ink : C.inkDim }}>{s.granToggle[g]}</button>
               ))}
             </div>
@@ -165,22 +160,12 @@ export default function Retention({ s, lang }) {
               <p style={note}>{s.ret.drill.hint}</p>
             </Panel>
           )
-        ) : granularity === "week" ? (
-          !hasWeekly ? <EmptyState s={s} /> : (
-            <Panel>
-              <Grid rows={weekly} indexes={WEEK_INDEXES} keyField="cohort_week"
-                labelFor={v => formatWeek(v, lang)} indexLabel={s.ret.week} s={s} />
-              <p style={note}>{s.ret.activityNote}</p>
-              <p style={note}>{s.ret.maturingNote}</p>
-            </Panel>
-          )
         ) : (
           !hasMonthly ? <EmptyState s={s} /> : (
             <Panel>
               <Grid rows={monthly} indexes={MONTH_INDEXES} keyField="cohort_month"
                 labelFor={v => formatMonth(v, lang)} indexLabel={s.ret.month} s={s} />
-              <p style={note}>{s.ret.activityNote}</p>
-              <p style={note}>{s.ret.maturingNote}</p>
+              <p style={note}>{s.ret.monthNote}</p>
             </Panel>
           )
         )
