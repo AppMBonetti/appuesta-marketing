@@ -23,17 +23,50 @@ function buildChecks(h, s) {
   if (Number(h.stale_open_bets) > 0) betNotes.push({ level: "warn", text: fill(s.health.staleOpen, { n: h.stale_open_bets }) });
   checks.push({ label: s.health.bets, notes: betNotes });
 
-  const snapNotes = [];
-  const days = Number(h.snapshot_days);
-  if (days <= 1) {
-    snapNotes.push({ level: "bad", text: fill(s.health.snapshotsOne, { d: h.first_snapshot ?? "—" }) });
+  // The player report is a snapshot, so the question that matters is how far
+  // behind it is. The payments report runs later, so it can answer that: any
+  // deposit it records after a player's own last-deposit date is proof.
+  const freshNotes = [];
+  const behind = Number(h.player_report_days_behind) || 0;
+  if (!h.player_report_knows_through) {
+    freshNotes.push({ level: "bad", text: s.health.playerReportNone });
+  } else if (behind > 0) {
+    freshNotes.push({ level: "warn", text: fill(s.health.playerReportBehind, {
+      d: h.player_report_knows_through, p: h.payments_covered_through, n: behind,
+    }) });
+    if (Number(h.players_with_newer_deposits) > 0) {
+      freshNotes.push({ level: "warn", text: fill(s.health.playerReportDrift, {
+        n: h.players_with_newer_deposits,
+      }) });
+    }
+    if (Number(h.depositors_missing_from_player_report) > 0) {
+      freshNotes.push({ level: "warn", text: fill(s.health.playerReportMissing, {
+        n: h.depositors_missing_from_player_report,
+      }) });
+    }
   } else {
-    snapNotes.push({ level: "ok", text: fill(s.health.snapshotsOk, { n: days, a: h.first_snapshot, b: h.last_snapshot }) });
+    freshNotes.push({ level: "ok", text: fill(s.health.playerReportOk, {
+      d: h.player_report_knows_through,
+    }) });
   }
+  checks.push({ label: s.health.playerReport, notes: freshNotes });
+
+  const depositNotes = [];
   if (Number(h.weeks_without_deposits) > 0) {
-    snapNotes.push({ level: "warn", text: fill(s.health.snapshotsWeeks, { n: h.weeks_without_deposits, t: h.weeks_total }) });
+    depositNotes.push({ level: "warn", text: fill(s.health.depositWeeksMissing, {
+      n: h.weeks_without_deposits, t: h.weeks_total,
+    }) });
+  } else {
+    depositNotes.push({ level: "ok", text: s.health.depositWeeksOk });
   }
-  checks.push({ label: s.health.snapshots, notes: snapNotes });
+  // A week covered only by a wider reporting period has no weekly figure. That
+  // is a limit of the source, not a gap in the upload, and says so.
+  if (Number(h.weeks_deposits_period_only) > 0) {
+    depositNotes.push({ level: "warn", text: fill(s.health.depositPeriodOnly, {
+      n: h.weeks_deposits_period_only,
+    }) });
+  }
+  checks.push({ label: s.health.deposits, notes: depositNotes });
 
   const known = Number(h.ftd_amount_known);
   const totalFtd = Number(h.ftd_players);

@@ -6,7 +6,6 @@ import { Wallet, TrendingUp, Coins, Users, Percent, PiggyBank } from "lucide-rea
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { getPeriodRange, formatWeek } from "../lib/period";
-import { weeklyFromSnapshots } from "../lib/metrics";
 import { SectionHeading, Panel, KpiCard, PeriodBar, Spinner, fmtDOP, deltaOf, EmptyState } from "../components/ui";
 import GgrReconciliation from "../components/GgrReconciliation";
 
@@ -59,7 +58,8 @@ export default function Funnel({ s, lang }) {
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
   const [tierRows, setTierRows] = useState([]);
-  const [dailyTotals, setDailyTotals] = useState([]);
+  const [depositPeriods, setDepositPeriods] = useState([]);
+  const [houseTotals, setHouseTotals] = useState(null);
   const [ftdWeekly, setFtdWeekly] = useState([]);
   const [betsWeekly, setBetsWeekly] = useState([]);
   const [topGgr, setTopGgr] = useState([]);
@@ -107,7 +107,7 @@ export default function Funnel({ s, lang }) {
         // the weekly series, and the GGR leaderboard all describe the book to date.
         const [tiersRes, dailyRes, ftdRes, betsRes, topRes] = await Promise.all([
           supabase.from("vip_tier_summary").select("*").order("tier_order"),
-          supabase.from("snapshot_daily_totals").select("*").order("snapshot_date"),
+          supabase.from("deposits_by_period").select("*").order("period_start"),
           supabase.from("ftd_weekly").select("*").order("week_start"),
           supabase.from("bets_weekly").select("*").order("week_start"),
           supabase.from("players").select("id, name, total_ggr_sportsbook, total_deposit_amount, vip_tier")
@@ -123,7 +123,9 @@ export default function Funnel({ s, lang }) {
 
         if (!active) return;
         setTierRows(tiersRes.data || []);
-        setDailyTotals(dailyRes.data || []);
+        setDepositPeriods(dailyRes.data || []);
+        const { data: totalsRow } = await supabase.from("house_totals").select("*").maybeSingle();
+        if (active) setHouseTotals(totalsRow || null);
         setFtdWeekly(ftdRes.data || []);
         setBetsWeekly(betsRes.data || []);
         setTopGgr(topRes.data || []);
@@ -142,20 +144,21 @@ export default function Funnel({ s, lang }) {
   const maxFunnel = data?.current?.reg || 0;
   const hasTierData = tierRows.some(r => r.players > 0);
 
-  const depositsWeekly = weeklyFromSnapshots(dailyTotals, "total_deposits");
-  const snapshotGgrWeekly = weeklyFromSnapshots(dailyTotals, "total_ggr");
-  // Altenar bets carry a real bet_date, so they give a true weekly GGR series
-  // from a single import; snapshot deltas are the fallback until then.
+  // The payments report sums a date range, so deposits are plotted at the grain
+  // the source actually has. A period that happens to be one week lines up with
+  // the other weekly series; a wider backfill shows as a single wider point
+  // rather than being spread across weeks it cannot be attributed to.
+  const depositsWeekly = depositPeriods.map(r => ({
+    week: r.period_start, value: Number(r.deposit_amount) || 0,
+  }));
+  // Altenar bets carry a real bet_date, so GGR is genuinely weekly.
   const hasBets = betsWeekly.length > 0;
-  const ggrWeekly = hasBets
-    ? betsWeekly.map(b => ({ week: b.week_start, value: Number(b.ggr) || 0 }))
-    : snapshotGgrWeekly;
+  const ggrWeekly = betsWeekly.map(b => ({ week: b.week_start, value: Number(b.ggr) || 0 }));
   const ftdWeeklyChart = ftdWeekly.map(r => ({ week: r.week_start, value: r.ftds }));
 
-  const latestTotals = dailyTotals.length ? dailyTotals[dailyTotals.length - 1] : null;
-  const totalGgr = Number(latestTotals?.total_ggr ?? 0);
-  const totalDeposits = Number(latestTotals?.total_deposits ?? 0);
-  const ftdPlayers = Number(latestTotals?.ftd_players ?? 0);
+  const totalGgr = Number(houseTotals?.total_ggr ?? 0);
+  const totalDeposits = Number(houseTotals?.total_deposits ?? 0);
+  const ftdPlayers = Number(houseTotals?.ftd_players ?? 0);
   const ggrPerPlayer = ftdPlayers > 0 ? totalGgr / ftdPlayers : null;
   const depositMargin = totalDeposits > 0 ? totalGgr / totalDeposits : null;
   const totalStake = betsWeekly.reduce((sum, b) => sum + (Number(b.stake) || 0), 0);

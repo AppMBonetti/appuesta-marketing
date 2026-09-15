@@ -82,7 +82,7 @@ function utcParts(ms) {
   return [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds()];
 }
 
-function unwrapCellValue(value) {
+export function unwrapCellValue(value) {
   if (value && typeof value === "object") {
     if (value.result !== undefined) return unwrapCellValue(value.result);
     // A hyperlinked cell nests its label: { text: { richText: [...] }, hyperlink }.
@@ -485,6 +485,17 @@ async function readSheetCandidates(file) {
     // them); the tolerant reader handles those rather than failing the import.
   }
   return [await readSheetRowsNamespaceTolerant(file)];
+}
+
+/**
+ * Every worksheet in the file, as raw row arrays. `parseXlsxFile` picks the one
+ * sheet whose header best matches the columns asked for; this exposes the rest.
+ * The backoffice exports put the date range the report was run for on a
+ * separate "Properties" sheet, and that range is the only thing that says which
+ * period the figures belong to.
+ */
+export async function readAllSheets(file) {
+  return (await readSheetCandidates(file)).filter(rows => rows && rows.length);
 }
 
 /**

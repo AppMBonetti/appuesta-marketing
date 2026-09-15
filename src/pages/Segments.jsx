@@ -37,9 +37,20 @@ const CSV_COLUMNS = [
   { label: "top_sport", value: p => p.top_sport },
   { label: "top_sport_share_pct", value: p => p.top_sport_share },
   { label: "sports_played", value: p => p.sports_played },
+  { label: "last_login", value: p => p.last_login_at },
+  { label: "days_since_login", value: p => p.days_since_login },
+  { label: "login_recency", value: p => p.login_recency },
+  { label: "engaged_not_depositing", value: p => (p.engaged_not_depositing ? "yes" : "no") },
 ];
 
-const EMPTY_FILTERS = { stage: "", tier: "", sport: "", search: "", minDeposits: "", minBets: "" };
+// Login-recency buckets in the order they read as a decay curve, so the filter
+// and the summary row agree rather than sorting alphabetically.
+const LOGIN_BUCKETS = ["0-1 days", "2-7 days", "8-14 days", "15-30 days", "30+ days", "Never logged in"];
+
+const EMPTY_FILTERS = {
+  stage: "", tier: "", sport: "", search: "", minDeposits: "", minBets: "",
+  login: "", engaged: false,
+};
 
 export default function Segments({ s, lang }) {
   const [players, setPlayers] = useState([]);
@@ -81,6 +92,8 @@ export default function Segments({ s, lang }) {
       if (filters.stage && p.lifecycle !== filters.stage) return false;
       if (filters.tier && p.vip_tier !== filters.tier) return false;
       if (filters.sport && p.top_sport !== filters.sport) return false;
+      if (filters.login && p.login_recency !== filters.login) return false;
+      if (filters.engaged && !p.engaged_not_depositing) return false;
       if (minDeposits != null && Number(p.deposits || 0) < minDeposits) return false;
       if (minBets != null && Number(p.bets || 0) < minBets) return false;
       if (needle) {
@@ -103,7 +116,8 @@ export default function Segments({ s, lang }) {
   const dateOf = v => (v ? String(v).slice(0, 10) : s.seg.never);
 
   function exportSegment() {
-    const parts = [filters.stage, filters.tier, filters.sport].filter(Boolean);
+    const parts = [filters.stage, filters.tier, filters.sport, filters.login,
+      filters.engaged ? "engaged-not-depositing" : ""].filter(Boolean);
     const label = parts.length ? parts.join("-") : "todos";
     const slug = label.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-");
     downloadCsv(`appuesta-segmento-${slug}-${new Date().toISOString().slice(0, 10)}.csv`, CSV_COLUMNS, filtered);
@@ -172,6 +186,15 @@ export default function Segments({ s, lang }) {
           <option value="">{s.seg.allSports}</option>
           {sports.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
+        <select value={filters.login} onChange={e => setFilters(f => ({ ...f, login: e.target.value }))} style={input}>
+          <option value="">{s.seg.allLogins}</option>
+          {LOGIN_BUCKETS.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: C.inkDim, cursor: "pointer" }}>
+          <input type="checkbox" checked={filters.engaged}
+            onChange={e => setFilters(f => ({ ...f, engaged: e.target.checked }))} />
+          {s.seg.engagedNotDepositing}
+        </label>
         <input type="number" value={filters.minDeposits} placeholder={s.seg.minDeposits}
           onChange={e => setFilters(f => ({ ...f, minDeposits: e.target.value }))} style={{ ...input, width: 130 }} />
         <input type="number" value={filters.minBets} placeholder={s.seg.minBets}
@@ -203,7 +226,8 @@ export default function Segments({ s, lang }) {
                 {[s.seg.cols.id, s.seg.cols.player, s.seg.cols.lifecycle, s.seg.cols.tier,
                   s.seg.cols.deposits, s.seg.cols.depositCount, s.seg.cols.ggr, s.seg.cols.bets,
                   s.seg.cols.stake, s.seg.cols.avgStake, s.seg.cols.topSport,
-                  s.seg.cols.lastActivity, s.seg.cols.daysInactive].map(h => <th key={h} style={th}>{h}</th>)}
+                  s.seg.cols.lastActivity, s.seg.cols.daysInactive,
+                  s.seg.cols.lastLogin].map(h => <th key={h} style={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -246,6 +270,20 @@ export default function Segments({ s, lang }) {
                   <td style={{ ...td, color: C.inkDim }}>{dateOf(p.last_activity)}</td>
                   <td style={{ ...td, color: p.days_inactive >= 15 ? C.negative : C.inkDim }}>
                     {p.days_inactive ?? "—"}
+                  </td>
+                  <td style={{ ...td, color: C.inkDim }}>
+                    {p.days_since_login == null ? "—" : (
+                      <>
+                        {s.seg.daysAgo.replace("{n}", String(p.days_since_login))}
+                        {p.engaged_not_depositing && (
+                          // Logged in this week but not paying: the one segment
+                          // where the right action is an offer, not a win-back.
+                          <span title={s.seg.engagedHint} style={{ color: "#4FA3D1", fontSize: 10, border: "1px solid #4FA3D155", borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
+                            {s.seg.engagedTag}
+                          </span>
+                        )}
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
