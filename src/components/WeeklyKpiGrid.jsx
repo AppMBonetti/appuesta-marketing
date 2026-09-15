@@ -6,6 +6,10 @@ import { fmtMoney } from "../lib/currency";
 import { Spinner } from "./ui";
 import PlayerDrill, { DRILLABLE } from "./PlayerDrill";
 
+// Deposit figures come from a date-ranged report, so these three rows can be
+// legitimately absent at week grain while the period total exists.
+const DEPOSIT_ROWS = new Set(["depositCount", "depositAmount", "depositors"]);
+
 function formatValue(value, format) {
   if (value == null || Number.isNaN(value)) return "—";
   switch (format) {
@@ -144,7 +148,9 @@ export default function WeeklyKpiGrid({ s, lang, weeks, rowsByWeek, onEditSpend,
                           <Spinner />
                         ) : (
                           <>
-                            {formatValue(current, row.format)}
+                            {current == null && rowsByWeek[week]?.depositsPeriodOnly && DEPOSIT_ROWS.has(row.key)
+                              ? <span title={s.wk.periodOnlyHint} style={{ color: C.inkFaint }}>{s.wk.periodOnly}</span>
+                              : formatValue(current, row.format)}
                             {rowsByWeek[week]?.[`${row.key}_is_manual`] && (
                               // A hand-entered correction has to be visible, or
                               // nobody can tell it apart from what the source said.

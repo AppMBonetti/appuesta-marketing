@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
-import { formatWeek, addDays, dateRangeLabel, formatMonth } from "../lib/period";
+import { formatWeek, addDays, dateRangeLabel, formatMonth, monthOfWeek } from "../lib/period";
 import { deriveWeeklyKpis, wowChange, aggregateWeeklyRows } from "../lib/metrics";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
 import { fmtMoney } from "../lib/currency";
@@ -26,7 +26,7 @@ const fmtMoney2 = v => fmtMoney(v, { decimals: 2 });
 
 /** Every month that has at least one week of data, newest last. */
 function monthsWithData(weeks) {
-  return [...new Set(weeks.map(w => `${w.week.slice(0, 7)}-01`))].sort();
+  return [...new Set(weeks.map(w => monthOfWeek(w.week)))].sort();
 }
 
 /**
@@ -42,8 +42,8 @@ function weeksForSelection(weeks, mode, selection) {
     return found ? [found] : [weeks[weeks.length - 1]];
   }
   if (mode === "month") {
-    const month = selection.month?.slice(0, 7);
-    const inMonth = weeks.filter(w => w.week.slice(0, 7) === month);
+    const month = selection.month;
+    const inMonth = weeks.filter(w => monthOfWeek(w.week) === month);
     return inMonth.length ? inMonth : [];
   }
   const { start, end } = selection;
@@ -117,7 +117,7 @@ export default function Overview({ s, lang }) {
         const lastWeek = rows[rows.length - 1].week;
         setSelection({
           week: lastWeek,
-          month: `${lastWeek.slice(0, 7)}-01`,
+          month: monthOfWeek(lastWeek),
           start: rows[0].week,
           end: addDays(lastWeek, 6),
         });

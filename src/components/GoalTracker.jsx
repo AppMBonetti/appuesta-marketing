@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
-import { weeksInMonth, currentBudgetMonth, formatMonth } from "../lib/period";
-import { deriveWeeklyKpis } from "../lib/metrics";
+import { currentBudgetMonth, formatMonth } from "../lib/period";
 import { SectionHeading, Panel, fmtDOP } from "./ui";
 
 // Cost goals are met by coming in UNDER them, so both the comparison and the
@@ -31,34 +30,37 @@ function monthElapsed(month) {
 
 export default function GoalTracker({ s, lang, month = currentBudgetMonth() }) {
   const [goals, setGoals] = useState({});
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState(null);
 
   useEffect(() => {
     let active = true;
     (async () => {
-      const [g, w] = await Promise.all([
+      // Against a monthly goal, the month has to mean the calendar month. Summing
+      // the weeks whose Monday falls inside it put 1-6 September in the week
+      // starting 31 August, so September was judged on 7-13 September alone and
+      // showed no registrations and no FTDs against targets of 1,500 and 180.
+      const [y, m] = month.split("-").map(Number);
+      const monthEnd = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+      const [g, r] = await Promise.all([
         supabase.from("goals").select("metric_name, target_value")
           .eq("period_start", month).eq("period_type", "month"),
-        supabase.from("weekly_kpis").select("*"),
+        supabase.rpc("kpis_for_range", { p_start: `${month.slice(0, 7)}-01`, p_end: monthEnd }),
       ]);
       if (!active) return;
-      setGoals(Object.fromEntries((g.data || []).map(r => [r.metric_name, Number(r.target_value)])));
-      setRows(w.data || []);
+      setGoals(Object.fromEntries((g.data || []).map(row => [row.metric_name, Number(row.target_value)])));
+      setRows(Array.isArray(r.data) ? r.data[0] || null : r.data || null);
     })();
     return () => { active = false; };
   }, [month]);
 
-  const weeks = new Set(weeksInMonth(month));
-  const inMonth = rows.filter(r => weeks.has(r.week_start)).map(deriveWeeklyKpis);
-  const sum = key => inMonth.reduce((total, w) => total + (w[key] ?? 0), 0);
-
-  const spend = sum("spend");
-  const registrations = sum("registrations");
-  const ftds = sum("ftds");
+  const num = value => (value == null ? 0 : Number(value));
+  const spend = num(rows?.spend);
+  const registrations = num(rows?.registrations);
+  const ftds = num(rows?.ftds);
   const actualFor = {
     registrations, ftds, spend,
-    ggr: sum("ggr"),
-    depositAmount: sum("depositAmount"),
+    ggr: num(rows?.ggr),
+    depositAmount: num(rows?.deposit_amount),
     costPerRegistration: registrations > 0 ? spend / registrations : null,
     costPerAcquisition: ftds > 0 ? spend / ftds : null,
   };

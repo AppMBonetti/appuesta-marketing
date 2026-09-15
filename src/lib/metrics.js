@@ -97,6 +97,10 @@ export function deriveWeeklyKpis(row) {
     trafficToRegistration: ratio(registrations, sessions),
     registrationToDeposit: ratio(ftds, registrations),
     arpu: ratio(ggr, activePlayers),
+    // The payments report sums a date range. When the only range covering this
+    // week is wider than a week, the week has no deposit figure of its own -- a
+    // limit of the source, not a week in which nobody deposited.
+    depositsPeriodOnly: row?.deposits_period_only === true,
     ...manualFlags(row),
   };
 }
