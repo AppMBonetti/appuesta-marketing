@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { Wallet, TrendingUp, Coins, Users, Percent, PiggyBank } from "lucide-react";
+import { Wallet, TrendingUp, Coins, Users, Percent, PiggyBank, ArrowLeftRight } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { getPeriodRange, formatWeek } from "../lib/period";
@@ -156,6 +156,23 @@ export default function Funnel({ s, lang }) {
   const ggrWeekly = betsWeekly.map(b => ({ week: b.week_start, value: Number(b.ggr) || 0 }));
   const ftdWeeklyChart = ftdWeekly.map(r => ({ week: r.week_start, value: r.ftds }));
 
+  // Withdrawals come from the same payments report rows as deposits, so net
+  // cash is only ever stated over the periods that report covers -- never a
+  // running total across gaps.
+  const netCashRows = depositPeriods.map(r => ({
+    key: `${r.period_start}|${r.period_end}`,
+    start: r.period_start,
+    end: r.period_end,
+    depositors: Number(r.depositors) || 0,
+    depositCount: Number(r.deposit_count) || 0,
+    depositAmount: Number(r.deposit_amount) || 0,
+    payoutCount: Number(r.payout_count) || 0,
+    payoutAmount: Number(r.payout_amount) || 0,
+    net: Number(r.net_cash) || 0,
+  }));
+  const netCashTotal = netCashRows.reduce((sum, r) => sum + r.net, 0);
+  const hasPayoutData = netCashRows.some(r => r.payoutCount > 0);
+
   const totalGgr = Number(houseTotals?.total_ggr ?? 0);
   const totalDeposits = Number(houseTotals?.total_deposits ?? 0);
   const ftdPlayers = Number(houseTotals?.ftd_players ?? 0);
@@ -165,6 +182,8 @@ export default function Funnel({ s, lang }) {
   const holdRate = totalStake > 0 ? ggrWeekly.reduce((sum, w) => sum + w.value, 0) / totalStake : null;
 
   const thStyle = { padding: "12px 16px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 12 };
+  const numCell = { padding: "10px 16px", textAlign: "right", fontWeight: 500 };
+  const dimCell = { padding: "10px 16px", textAlign: "right", color: C.inkDim };
 
   return (
     <>
@@ -190,6 +209,9 @@ export default function Funnel({ s, lang }) {
             <KpiCard icon={Wallet} label={s.avgDeposit} value={fmtDOP(data.avgDeposit)} />
             <KpiCard icon={TrendingUp} label={s.avgBet} value={fmtDOP(data.avgBet)} />
             <KpiCard icon={PiggyBank} label={s.ggrKpi.deposits} value={fmtDOP(totalDeposits)} />
+            {hasPayoutData && (
+              <KpiCard icon={ArrowLeftRight} label={s.netCashKpi} value={fmtDOP(netCashTotal)} />
+            )}
           </div>
 
           {maxFunnel === 0 ? (
@@ -216,6 +238,41 @@ export default function Funnel({ s, lang }) {
             <InfoNote>{s.needsTwoSnapshots}</InfoNote>
           ) : (
             <Panel style={{ marginBottom: 26 }}><WeeklyBarChart data={depositsWeekly} lang={lang} color={C.accent} /></Panel>
+          )}
+
+          {hasPayoutData && (
+            <>
+              <SectionHeading title={s.netCashTitle} subtitle={s.netCashSub} />
+              <Panel style={{ padding: 4, overflow: "auto", marginBottom: 26 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>{s.netCashCols.period}</th>
+                      {[s.netCashCols.depositors, s.netCashCols.depCount, s.netCashCols.depAmount,
+                        s.netCashCols.payCount, s.netCashCols.payAmount, s.netCashCols.net].map(h => (
+                        <th key={h} style={{ ...thStyle, textAlign: "right" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {netCashRows.map(r => (
+                      <tr key={r.key}>
+                        <td style={{ padding: "10px 16px" }}>{r.start} → {r.end}</td>
+                        <td style={numCell}>{r.depositors.toLocaleString()}</td>
+                        <td style={dimCell}>{r.depositCount.toLocaleString()}</td>
+                        <td style={numCell}>{fmtDOP(r.depositAmount)}</td>
+                        <td style={dimCell}>{r.payoutCount.toLocaleString()}</td>
+                        <td style={numCell}>{fmtDOP(r.payoutAmount)}</td>
+                        <td style={{ ...numCell, color: r.net < 0 ? C.negative : C.positive }}>
+                          {fmtDOP(r.net)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Panel>
+              <InfoNote>{s.netCashNote}</InfoNote>
+            </>
           )}
 
           <SectionHeading title={s.ftdWeeklyTitle} subtitle={s.ftdWeeklySub} />
