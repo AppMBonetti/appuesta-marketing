@@ -7,9 +7,24 @@ import CohortDrill from "../components/CohortDrill";
 
 const MONTH_INDEXES = [0, 1, 2, 3];
 
-/** Heat scale for a retention percentage; immature cells never get a colour. */
-function cellStyle(pct, mature) {
+/**
+ * Heat scale for a retention percentage.
+ *
+ * Three states, not two. A closed window gets full colour. A window still open
+ * but already carrying deposits is `partial`: the figure is a floor that can
+ * only rise, so it shows muted behind a dashed border rather than either
+ * disappearing or passing for settled. Everything else has nothing to say yet.
+ */
+function cellStyle(pct, mature, partial) {
   if (!mature) {
+    if (partial) {
+      const v = Math.min(Number(pct) || 0, 100);
+      return {
+        background: `rgba(228, 2, 43, ${(0.06 + v / 100 * 0.22).toFixed(3)})`,
+        color: C.inkDim,
+        border: `1px dashed ${C.panelBorder}`,
+      };
+    }
     return { background: "#171B22", color: C.inkFaint, border: `1px dashed ${C.panelBorder}` };
   }
   const value = Number(pct) || 0;
@@ -42,18 +57,28 @@ function Grid({ rows, indexes, keyField, labelFor, indexLabel, headerFor, onCell
               <td style={{ padding: "8px 12px", fontSize: 12.5, textAlign: "right", color: C.inkDim }}>{row.players}</td>
               {indexes.map(i => {
                 const cell = row.cells[i];
-                const style = cellStyle(cell?.pct, cell?.mature);
+                // Partial: the window is open but deposits are already in, so
+                // there is a real figure to read -- as a floor, not a verdict.
+                const partial = Boolean(cell && !cell.mature && !cell.beyondCoverage
+                  && Number(cell.retained) > 0);
+                const style = cellStyle(cell?.pct, cell?.mature, partial);
+                const openable = Boolean(onCell && cell && (cell.mature || partial));
                 return (
                   <td key={i}
-                    onClick={onCell && cell?.mature ? () => onCell(row[keyField], i) : undefined}
+                    onClick={openable ? () => onCell(row[keyField], i) : undefined}
                     style={{
                     ...style, padding: "8px 10px", fontSize: 12, textAlign: "center",
                     borderRadius: 7, minWidth: 54, fontVariantNumeric: "tabular-nums",
-                    cursor: onCell && cell?.mature ? "pointer" : "default",
+                    cursor: openable ? "pointer" : "default",
                   }}
                   title={cell?.mature ? `${cell.retained} / ${row.players}`
+                    : partial ? `${cell.retained} / ${row.players} · ${
+                        cell.coveredTo && cell.lastDay
+                          ? s.ret.partialThrough.replace("{d}", cell.coveredTo).replace("{e}", cell.lastDay)
+                          : s.maturing}`
                     : cell?.beyondCoverage ? s.ret.noCoverage : s.maturing}>
-                    {cell?.mature ? `${Number(cell.pct).toFixed(0)}%` : "·"}
+                    {cell?.mature ? `${Number(cell.pct).toFixed(0)}%`
+                      : partial ? `${Number(cell.pct).toFixed(0)}%*` : "·"}
                   </td>
                 );
               })}
@@ -74,6 +99,9 @@ function pivot(flatRows, keyField, indexField) {
     byCohort.get(key).cells[row[indexField]] = {
       pct: row.pct, retained: row.retained, mature: row.mature,
       beyondCoverage: row.beyond_coverage === true,
+      monthStart: row.month_start ?? null,
+      coveredTo: row.covered_to ?? null,
+      lastDay: row.month_last_day ?? null,
     };
   }
   return [...byCohort.values()].sort((a, b) => String(a[keyField]).localeCompare(String(b[keyField])));
@@ -164,8 +192,15 @@ export default function Retention({ s, lang }) {
           !hasMonthly ? <EmptyState s={s} /> : (
             <Panel>
               <Grid rows={monthly} indexes={MONTH_INDEXES} keyField="cohort_month"
-                labelFor={v => formatMonth(v, lang)} indexLabel={s.ret.month} s={s} />
+                labelFor={v => formatMonth(v, lang)} indexLabel={s.ret.month}
+                onCell={(cohortMonth, index) => {
+                  const cell = monthly.find(r => r.cohort_month === cohortMonth)?.cells?.[index];
+                  if (!cell?.monthStart) return;
+                  setDrill({ month: { cohortMonth, monthStart: cell.monthStart } });
+                }} s={s} />
               <p style={note}>{s.ret.monthNote}</p>
+              <p style={note}>{s.ret.partialLegend}</p>
+              <p style={note}>{s.ret.drill.hint}</p>
             </Panel>
           )
         )
@@ -173,7 +208,7 @@ export default function Retention({ s, lang }) {
 
       {drill && (
         <CohortDrill s={s} lang={lang} cohortWeek={drill.cohortWeek}
-          period={drill.period} onClose={() => setDrill(null)} />
+          period={drill.period} month={drill.month} onClose={() => setDrill(null)} />
       )}
 
       {!loading && !error && view === "segment" && (

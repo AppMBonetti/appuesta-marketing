@@ -33,6 +33,8 @@ export const STRINGS = {
       noMature: "Todavía no hay cohortes con la semana 4 completa. Aparecerán cuando la primera cohorte cumpla 5 semanas.",
       anchored: "Cohortes desde el inicio de operaciones",
       noCoverage: "El reporte de jugadores no llega a esta semana todavía — no es 0%, es que no tenemos el dato.",
+      partialThrough: "parcial · cubre hasta {d}, el período cierra el {e}. Solo puede subir.",
+      partialLegend: "Las celdas con * son de un período que sigue abierto: el reporte de pagos aún no lo cubre completo, así que la cifra es un piso y solo puede subir.",
       drill: {
         title: "Cohorte {cohort} — jugadores",
         hint: "Haz clic en cualquier celda para ver los jugadores que hay detrás, con su último depósito y su último acceso.",
@@ -338,6 +340,8 @@ export const STRINGS = {
       noMature: "No cohort has completed week 4 yet. These appear once the first cohort turns five weeks old.",
       anchored: "Cohorts since operations started",
       noCoverage: "The player report does not reach this week yet - this is not 0%, it is missing data.",
+      partialThrough: "partial · covers through {d}, the period closes {e}. It can only rise.",
+      partialLegend: "Cells marked * belong to a period that is still open: the payments report does not cover it in full yet, so the figure is a floor and can only rise.",
       monthNote: "Months are assembled from the payments report's periods, so a month reports only what the report covers. \u201cMonth +0\u201d is the FTD's own month, where a second deposit is required. A period straddling two months is attributed to neither, because its deposits cannot be split.",
       periodNote: "Columns are the payments report's own periods, which carry an exact deposit count per player. Retention = players in the cohort who deposited in that period (in the period holding their own FTD, a second deposit is required). This is the exact view: the weekly view can only date each player's first and last deposit, so it understates frequent depositors. Send the payments report week by week and these columns become weeks.",
       drill: {

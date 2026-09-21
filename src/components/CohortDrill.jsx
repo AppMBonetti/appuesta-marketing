@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { X, Download } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
-import { dateRangeLabel, formatWeek } from "../lib/period";
+import { dateRangeLabel, formatWeek, formatMonth } from "../lib/period";
 import { downloadCsv } from "../lib/csv";
 import { Spinner, fmtDOP } from "./ui";
 
@@ -33,23 +33,34 @@ const CSV_COLUMNS = [
  * needs an offer; someone who stopped doing both needs winning back. The
  * percentage cannot tell those apart and this list can.
  */
-export default function CohortDrill({ s, lang, cohortWeek, period, onClose }) {
+/**
+ * `month` opens the same panel over the month grid: same retention rule, same
+ * columns, just a cohort month and a calendar month instead of a week and a
+ * reporting period.
+ */
+export default function CohortDrill({ s, lang, cohortWeek, period, month, onClose }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [only, setOnly] = useState("all"); // all | retained | lapsed
 
+  const isMonth = Boolean(month);
+
   useEffect(() => {
-    if (!cohortWeek || !period) return undefined;
+    if (!isMonth && (!cohortWeek || !period)) return undefined;
+    if (isMonth && (!month.cohortMonth || !month.monthStart)) return undefined;
     let active = true;
     setLoading(true);
     (async () => {
-      const { data, error: err } = await supabase
-        .from("cohort_deposit_detail")
-        .select("*")
-        .eq("cohort_week", cohortWeek)
-        .eq("period_start", period.start)
-        .eq("period_end", period.end)
+      const query = isMonth
+        ? supabase.from("cohort_month_detail").select("*")
+            .eq("cohort_month", month.cohortMonth)
+            .eq("month_start", month.monthStart)
+        : supabase.from("cohort_deposit_detail").select("*")
+            .eq("cohort_week", cohortWeek)
+            .eq("period_start", period.start)
+            .eq("period_end", period.end);
+      const { data, error: err } = await query
         .order("amount_in_period", { ascending: false });
       if (!active) return;
       if (err) setError(err.message);
@@ -57,7 +68,7 @@ export default function CohortDrill({ s, lang, cohortWeek, period, onClose }) {
       setLoading(false);
     })();
     return () => { active = false; };
-  }, [cohortWeek, period]);
+  }, [isMonth, cohortWeek, period, month]);
 
   useEffect(() => {
     const onKey = e => { if (e.key === "Escape") onClose(); };
@@ -82,10 +93,14 @@ export default function CohortDrill({ s, lang, cohortWeek, period, onClose }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "16px 18px", borderBottom: `1px solid ${C.panelBorder}` }}>
           <div>
             <div style={{ fontSize: 14.5, fontWeight: 600 }}>
-              {s.ret.drill.title.replace("{cohort}", formatWeek(cohortWeek, lang))}
+              {s.ret.drill.title.replace("{cohort}", isMonth
+                ? formatMonth(month.cohortMonth, lang)
+                : formatWeek(cohortWeek, lang))}
             </div>
             <div style={{ fontSize: 12, color: C.inkDim, marginTop: 2 }}>
-              {dateRangeLabel(period.start, period.end, lang)} · {shown.length}
+              {isMonth
+                ? formatMonth(month.monthStart, lang)
+                : dateRangeLabel(period.start, period.end, lang)} · {shown.length}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
