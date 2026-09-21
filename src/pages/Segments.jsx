@@ -75,9 +75,29 @@ export default function Segments({ s, lang }) {
     load();
   }
 
+  // PostgREST caps a response at 1,000 rows, so a plain select quietly returned
+  // the top 1,000 players by deposits and nothing else -- the table, the filters
+  // and the CSV export all described a truncated book without saying so. Page
+  // through until a short page proves the end.
+  async function loadAllPlayers() {
+    const PAGE = 1000;
+    const all = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from("player_lifecycle")
+        .select("*")
+        .order("deposits", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) return { data: null, error };
+      all.push(...(data || []));
+      if (!data || data.length < PAGE) return { data: all, error: null };
+    }
+  }
+
   async function load() {
     const [p, sum] = await Promise.all([
-      supabase.from("player_lifecycle").select("*").order("deposits", { ascending: false }),
+      loadAllPlayers(),
       supabase.from("lifecycle_summary").select("*"),
     ]);
     if (p.error) setError(p.error.message);
@@ -118,7 +138,7 @@ export default function Segments({ s, lang }) {
   }, [players, filters]);
 
   const byStage = Object.fromEntries(summary.map(r => [r.lifecycle, r]));
-  const totalPlayers = players.length;
+  const totalPlayers = summary.reduce((sum, r) => sum + Number(r.players || 0), 0);
 
   const input = {
     background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8,
