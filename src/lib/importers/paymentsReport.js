@@ -146,6 +146,11 @@ export async function parsePaymentsReportFile(file) {
     expectedCurrency: EXPECTED_CURRENCY,
     summary: {
       players: byPlayer.size,
+      // A row means "had payment activity in the window", not "deposited": the
+      // report also lists withdrawal-only players and players whose payments
+      // all failed. Counting rows overstates depositors, so count the rows that
+      // actually carry a deposit.
+      depositors: [...byPlayer.values()].filter(p => p.deposit_count > 0).length,
       depositCount,
       depositAmount,
       payoutCount,
