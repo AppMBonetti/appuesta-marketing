@@ -478,7 +478,7 @@ export default function Imports({ s, lang }) {
                         {s.reportKnowsThrough.replace("{d}", state.knowsThrough)}
                       </div>
                     )}
-                    {state.summary?.depositors != null && (
+                    {state.summary?.ftdKnown != null && (
                       <div style={{ color: C.inkDim, marginTop: 4 }}>
                         {s.playersLoaded
                           .replace("{d}", state.summary.depositors.toLocaleString())
@@ -496,7 +496,16 @@ export default function Imports({ s, lang }) {
                           .replace("{a}", state.period.start)
                           .replace("{b}", state.period.end)
                           .replace("{n}", state.summary.depositCount.toLocaleString())
-                          .replace("{amt}", fmtDOP(state.summary.depositAmount))}
+                          .replace("{amt}", fmtDOP(state.summary.depositAmount))
+                          .replace("{d}", state.summary.depositors.toLocaleString())}
+                        {state.summary.players > state.summary.depositors && (
+                          <div>
+                            {s.paymentsNonDepositors.replace(
+                              "{n}",
+                              (state.summary.players - state.summary.depositors).toLocaleString(),
+                            )}
+                          </div>
+                        )}
                         {state.scope === "validation" && (
                           <div style={{ color: C.negative }}>{s.periodValidationOnly}</div>
                         )}
