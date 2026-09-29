@@ -291,6 +291,7 @@ export const STRINGS = {
     linkSent: "Revisa tu correo — te enviamos un enlace para entrar.", linkSentSub: "Puedes cerrar esta pestaña y volver desde el enlace.",
     authError: "No se pudo enviar el enlace. Intenta de nuevo.",
     authNotApproved: "Este correo no tiene acceso. Pide a Appuesta que lo autorice.",
+    authRateLimited: "Se enviaron demasiados enlaces en poco tiempo. Espera unos minutos y vuelve a intentarlo; si ya recibiste uno, usa el más reciente.",
     notAuthorizedTitle: "Sin acceso", notAuthorizedSub: "Tu cuenta inició sesión correctamente pero no está en la lista del equipo de Appuesta. Contacta a un administrador para que agregue tu correo.",
     signOut: "Cerrar sesión", signedInAs: "Conectado como",
     // imports
@@ -615,6 +616,7 @@ export const STRINGS = {
     linkSent: "Check your email — we sent you a sign-in link.", linkSentSub: "You can close this tab and come back from the link.",
     authError: "Couldn't send the link. Please try again.",
     authNotApproved: "This email isn't authorised. Ask Appuesta for access.",
+    authRateLimited: "Too many links were sent in a short time. Wait a few minutes and try again; if you already got one, use the latest.",
     notAuthorizedTitle: "No access", notAuthorizedSub: "Your account signed in successfully but isn't on the Appuesta team list. Ask an admin to add your email.",
     signOut: "Sign out", signedInAs: "Signed in as",
     // imports

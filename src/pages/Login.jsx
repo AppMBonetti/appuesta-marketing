@@ -6,7 +6,7 @@ import { Spinner } from "../components/ui";
 
 export default function Login({ s, lang, setLang }) {
   const [email, setEmail] = useState("");
-  const [state, setState] = useState("idle"); // idle | sending | sent | error | refused
+  const [state, setState] = useState("idle"); // idle | sending | sent | error | refused | limited
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -20,7 +20,9 @@ export default function Login({ s, lang, setLang }) {
     // The signup hook refuses emails nobody has approved (403); saying so
     // beats a generic "try again" that would only be refused again.
     const refused = error && (error.status === 403 || /not authoris/i.test(error.message || ""));
-    setState(!error ? "sent" : refused ? "refused" : "error");
+    // Supabase caps how many login emails the project sends per hour (429).
+    const limited = error && (error.status === 429 || error.code === "over_email_send_rate_limit");
+    setState(!error ? "sent" : refused ? "refused" : limited ? "limited" : "error");
   }
 
   return (
@@ -56,9 +58,9 @@ export default function Login({ s, lang, setLang }) {
                     style={{ width: "100%", background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 9, color: C.ink, padding: "10px 12px 10px 34px", fontSize: 13.5 }}
                   />
                 </div>
-                {(state === "error" || state === "refused") && (
+                {(state === "error" || state === "refused" || state === "limited") && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.negative, marginBottom: 14 }}>
-                    <AlertCircle size={13} /> {state === "refused" ? s.authNotApproved : s.authError}
+                    <AlertCircle size={13} /> {state === "refused" ? s.authNotApproved : state === "limited" ? s.authRateLimited : s.authError}
                   </div>
                 )}
                 <button
