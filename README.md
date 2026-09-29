@@ -34,6 +34,8 @@ The **Import Data** tab parses InTarget player reports and Altenar bet list expo
 
 The affiliate dashboard is a separate page at **`/afiliados`** (`src/AffiliatesApp.jsx`), chosen by path in `src/main.jsx`; it shares the marketing dashboard's build, login, team gating and database. It tracks influencer/affiliate codes. Each affiliate (`affiliates`) has a revenue-share % of GGR and an optional flat CPA per FTD. Their players report (the backoffice "Reports" CSV filtered by their code: `name;playerId;registeredAt;totalDepositAmount;totalGGRSportsbook`) is uploaded from the affiliate's page into `affiliate_players`; the importer is `src/lib/importers/affiliateReport.js`. `affiliate_player_stats` takes each figure from whichever is fresher — the upload or the player report — and `affiliate_summary` computes commission, payouts (`affiliate_payouts`) and balance due. Internal/test/excluded players never earn commission.
 
+**Affiliate portal** — `/portal` (`src/PortalApp.jsx`) is what an affiliate signs into. The team links login emails to an affiliate on its page (`affiliate_users`). Affiliates have no table access: the portal reads only the `my_affiliate_*` security-definer functions, which resolve the affiliate from the signed-in email and return that affiliate's figures, masked player refs (last 4 digits) and payout amounts — no names, emails, notes or other affiliates.
+
 ## Build
 
 ```bash

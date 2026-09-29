@@ -329,6 +329,79 @@ const PLAYER_CSV = [
   { label: "counts_for_commission", value: p => (p.is_flagged ? "no" : "yes") },
 ];
 
+/**
+ * Which emails can sign into /portal as this affiliate. Adding an email is the
+ * whole grant: the portal's database functions resolve the affiliate from it.
+ */
+function PortalAccessPanel({ t, affiliate }) {
+  const [emails, setEmails] = useState([]);
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [version, setVersion] = useState(0);
+  const portalUrl = `${window.location.origin}/portal`;
+
+  useEffect(() => {
+    let active = true;
+    supabase.from("affiliate_users").select("email, added_at").eq("affiliate_code", affiliate.code).order("added_at")
+      .then(({ data, error: err }) => {
+        if (!active) return;
+        if (err) setError(err.message);
+        else setEmails(data || []);
+      });
+    return () => { active = false; };
+  }, [affiliate.code, version]);
+
+  async function add() {
+    const value = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) { setError(t.access.invalid); return; }
+    setError(null);
+    const { error: err } = await supabase.from("affiliate_users").insert({ email: value, affiliate_code: affiliate.code });
+    if (err) { setError(err.code === "23505" ? t.access.taken : err.message); return; }
+    setEmail("");
+    setVersion(v => v + 1);
+  }
+
+  async function remove(value) {
+    if (!window.confirm(t.access.confirmRemove.replace("{email}", value))) return;
+    const { error: err } = await supabase.from("affiliate_users").delete().eq("email", value);
+    if (err) setError(err.message);
+    else setVersion(v => v + 1);
+  }
+
+  function copy() {
+    navigator.clipboard?.writeText(portalUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600); }, () => {});
+  }
+
+  return (
+    <Panel style={{ marginBottom: 18 }}>
+      <div style={{ fontSize: 14, fontWeight: 600 }}>{t.access.title}</div>
+      <div style={{ fontSize: 12, color: C.inkFaint, margin: "3px 0 12px" }}>{t.access.sub}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <code style={{ ...inputStyle, fontFamily: "ui-monospace, monospace" }}>{portalUrl}</code>
+        <button style={btn(false)} onClick={copy}>{copied ? t.access.copied : t.access.copy}</button>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input style={{ ...inputStyle, flex: 1, minWidth: 220 }} type="email" placeholder={t.access.placeholder} value={email}
+          onChange={e => setEmail(e.target.value)} onKeyDown={e => { if (e.key === "Enter") add(); }} />
+        <button style={btn(true)} onClick={add}><Plus size={14} /> {t.access.add}</button>
+      </div>
+      {error && <div style={{ color: C.negative, fontSize: 12.5, marginTop: 10 }}>{error}</div>}
+      {emails.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+          {emails.map(u => (
+            <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+              <span>{u.email}</span>
+              <button onClick={() => remove(u.email)} title={t.access.remove} style={{ background: "none", border: "none", cursor: "pointer", color: C.inkFaint }}><X size={14} /></button>
+            </div>
+          ))}
+        </div>
+      ) : <div style={{ fontSize: 12, color: C.inkFaint, marginTop: 10 }}>{t.access.none}</div>}
+      {!affiliate.active && <div style={{ fontSize: 12, color: C.negative, marginTop: 10 }}>{t.access.inactive}</div>}
+    </Panel>
+  );
+}
+
 function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
   const [players, setPlayers] = useState(null);
   const [payouts, setPayouts] = useState([]);
@@ -402,6 +475,7 @@ function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
 
       <UploadPanel t={t} affiliate={affiliate} onImported={refresh} />
       <PayoutsPanel t={t} lang={lang} affiliate={affiliate} payouts={payouts} onChanged={refresh} />
+      <PortalAccessPanel t={t} affiliate={affiliate} />
 
       <Panel style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "14px 16px", flexWrap: "wrap" }}>
@@ -464,7 +538,7 @@ function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
   );
 }
 
-export default function Affiliates({ s, lang }) {
+export default function Affiliates({ lang }) {
   const t = AFF_STRINGS[lang];
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);

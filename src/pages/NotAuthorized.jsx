@@ -1,9 +1,21 @@
+import { useEffect } from "react";
 import { ShieldAlert } from "lucide-react";
+import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { useAuth } from "../lib/AuthContext";
 
 export default function NotAuthorized({ s }) {
   const { session, signOut } = useAuth();
+
+  // An affiliate isn't on the team, so if their sign-in link lands them on a
+  // team dashboard, send them to their portal instead of a dead end.
+  useEffect(() => {
+    let active = true;
+    supabase.rpc("my_affiliate_code").then(({ data }) => {
+      if (active && data) window.location.replace("/portal");
+    });
+    return () => { active = false; };
+  }, []);
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', -apple-system, sans-serif", color: C.ink, padding: 20 }}>

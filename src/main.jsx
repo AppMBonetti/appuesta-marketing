@@ -28,12 +28,17 @@ window.addEventListener("load", () => {
   try { sessionStorage.removeItem(RELOAD_FLAG); } catch { /* storage unavailable */ }
 });
 
-// Two dashboards, one build: /afiliados is the affiliate dashboard, everything
-// else is marketing. Netlify's SPA fallback serves index.html for both. The
-// affiliate dashboard is a separate chunk fetched only on its own path, so the
-// marketing dashboard loads exactly as it did before it existed.
+// Three pages, one build: /afiliados is the team's affiliate dashboard, /portal
+// is where an affiliate sees their own figures, everything else is marketing.
+// Netlify's SPA fallback serves index.html for all of them. The two affiliate
+// pages are separate chunks fetched only on their own path, so the marketing
+// dashboard loads exactly as it did before they existed.
 const AffiliatesApp = lazy(() => import("./AffiliatesApp.jsx"));
-const Root = /^\/(afiliados|affiliates)(\/|$)/i.test(window.location.pathname) ? AffiliatesApp : App;
+const PortalApp = lazy(() => import("./PortalApp.jsx"));
+const path = window.location.pathname;
+const Root = /^\/portal(\/|$)/i.test(path) ? PortalApp
+  : /^\/(afiliados|affiliates)(\/|$)/i.test(path) ? AffiliatesApp
+  : App;
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

@@ -37,6 +37,12 @@ export const AFF_STRINGS = {
       date: "Fecha", amount: "Monto (DOP)", note: "Nota", add: "Registrar pago", delete: "Eliminar",
       amountRequired: "Indica un monto mayor que 0.", confirmDelete: "¿Eliminar este pago?",
     },
+    access: {
+      title: "Acceso al portal", sub: "Correos que pueden entrar al portal y ver solo los datos de este afiliado. Comparte el enlace: entran con un enlace mágico enviado a su correo.",
+      copy: "Copiar enlace", copied: "¡Copiado!", placeholder: "correo@ejemplo.com", add: "Dar acceso", remove: "Quitar acceso",
+      none: "Nadie tiene acceso todavía.", invalid: "Correo no válido.", taken: "Ese correo ya tiene acceso a un afiliado.",
+      confirmRemove: "¿Quitar el acceso de {email}?", inactive: "El afiliado está inactivo: no podrá entrar al portal hasta reactivarlo.",
+    },
     players: {
       title: "Jugadores", search: "Buscar jugador…", empty: "Todavía no hay jugadores. Sube el reporte del afiliado arriba.",
       player: "Jugador", registered: "Registro", ftd: "FTD", lastLogin: "Último acceso", yes: "Sí",
@@ -79,6 +85,12 @@ export const AFF_STRINGS = {
       title: "Payouts", sub: "Log each payment made to keep the balance due current.",
       date: "Date", amount: "Amount (DOP)", note: "Note", add: "Log payout", delete: "Delete",
       amountRequired: "Enter an amount above 0.", confirmDelete: "Delete this payout?",
+    },
+    access: {
+      title: "Portal access", sub: "Emails that can sign into the portal and see only this affiliate's data. Share the link: they sign in with a magic link sent to their email.",
+      copy: "Copy link", copied: "Copied!", placeholder: "email@example.com", add: "Grant access", remove: "Remove access",
+      none: "Nobody has access yet.", invalid: "Invalid email.", taken: "That email already has access to an affiliate.",
+      confirmRemove: "Remove access for {email}?", inactive: "This affiliate is inactive: they can't sign into the portal until reactivated.",
     },
     players: {
       title: "Players", search: "Search player…", empty: "No players yet. Upload the affiliate's report above.",
