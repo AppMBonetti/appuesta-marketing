@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   LayoutGrid, TrendingUp, Users, Repeat, Crown, NotebookPen,
-  SlidersHorizontal, UploadCloud, UsersRound,
+  SlidersHorizontal, UploadCloud, UsersRound, Handshake,
 } from "lucide-react";
 import { C } from "./lib/theme";
 import { getCurrencyState, loadFxRate, restoreCurrency, setCurrency } from "./lib/currency";
@@ -18,13 +18,14 @@ import Funnel from "./pages/Funnel";
 import Retention from "./pages/Retention";
 import Vip from "./pages/Vip";
 import Segments from "./pages/Segments";
+import Affiliates from "./pages/Affiliates";
 import Optimization from "./pages/Optimization";
 import Imports from "./pages/Imports";
 import Settings from "./pages/Settings";
 
 const TAB_IDS = [
   "overview", "acquisition", "funnel", "retention",
-  "vip", "segments", "optimization", "imports", "settings",
+  "vip", "segments", "affiliates", "optimization", "imports", "settings",
 ];
 
 export default function App() {
@@ -107,6 +108,7 @@ function Dashboard({ lang, setLang, s }) {
     { id: "retention", label: s.nav.retention, icon: Repeat, flag: true },
     { id: "vip", label: s.nav.vip, icon: Crown },
     { id: "segments", label: s.nav.segments, icon: UsersRound },
+    { id: "affiliates", label: s.nav.affiliates, icon: Handshake },
     { id: "optimization", label: s.nav.optimization, icon: NotebookPen },
     { id: "imports", label: s.nav.imports, icon: UploadCloud },
     { id: "settings", label: s.nav.settings, icon: SlidersHorizontal },
@@ -166,6 +168,7 @@ function Dashboard({ lang, setLang, s }) {
         {tab === "retention" && <Retention s={s} lang={lang} />}
         {tab === "vip" && <Vip s={s} lang={lang} />}
         {tab === "segments" && <Segments s={s} lang={lang} />}
+        {tab === "affiliates" && <Affiliates s={s} lang={lang} />}
         {tab === "optimization" && <Optimization s={s} lang={lang} />}
         {tab === "imports" && <Imports s={s} lang={lang} />}
         {tab === "settings" && <Settings s={s} lang={lang} />}
