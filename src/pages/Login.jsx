@@ -6,7 +6,7 @@ import { Spinner } from "../components/ui";
 
 export default function Login({ s, lang, setLang }) {
   const [email, setEmail] = useState("");
-  const [state, setState] = useState("idle"); // idle | sending | sent | error
+  const [state, setState] = useState("idle"); // idle | sending | sent | error | refused
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -17,7 +17,10 @@ export default function Login({ s, lang, setLang }) {
       // Back to the dashboard the link was requested from (marketing or affiliates).
       options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` },
     });
-    setState(error ? "error" : "sent");
+    // The signup hook refuses emails nobody has approved (403); saying so
+    // beats a generic "try again" that would only be refused again.
+    const refused = error && (error.status === 403 || /not authoris/i.test(error.message || ""));
+    setState(!error ? "sent" : refused ? "refused" : "error");
   }
 
   return (
@@ -53,9 +56,9 @@ export default function Login({ s, lang, setLang }) {
                     style={{ width: "100%", background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 9, color: C.ink, padding: "10px 12px 10px 34px", fontSize: 13.5 }}
                   />
                 </div>
-                {state === "error" && (
+                {(state === "error" || state === "refused") && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.negative, marginBottom: 14 }}>
-                    <AlertCircle size={13} /> {s.authError}
+                    <AlertCircle size={13} /> {state === "refused" ? s.authNotApproved : s.authError}
                   </div>
                 )}
                 <button

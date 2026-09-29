@@ -36,6 +36,8 @@ The affiliate dashboard is a separate page at **`/afiliados`** (`src/AffiliatesA
 
 **Affiliate portal** — `/portal` (`src/PortalApp.jsx`) is what an affiliate signs into. The team links login emails to an affiliate on its page (`affiliate_users`). Affiliates have no table access: the portal reads only the `my_affiliate_*` security-definer functions, which resolve the affiliate from the signed-in email and return that affiliate's figures, masked player refs (last 4 digits) and payout amounts — no names, emails, notes or other affiliates.
 
+**Sign-up allowlist** — the `hook_signup_allowlist` Postgres function (Supabase Auth → Hooks → Before User Created) refuses to create an account for any email not in `team_members` or `affiliate_users`. Add a new team member or affiliate email *before* they request their first login link.
+
 ## Build
 
 ```bash
