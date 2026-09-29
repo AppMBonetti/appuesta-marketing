@@ -3,6 +3,7 @@ import { ArrowUpRight } from "lucide-react";
 import { C } from "./lib/theme";
 import { getCurrencyState, loadFxRate, restoreCurrency, setCurrency } from "./lib/currency";
 import { STRINGS } from "./lib/i18n";
+import { AFF_STRINGS } from "./lib/i18nAffiliates";
 import { useAuth } from "./lib/AuthContext";
 import { supabaseConfigError } from "./lib/supabaseClient";
 import Login from "./pages/Login";
@@ -20,8 +21,9 @@ export default function AffiliatesApp() {
   const [lang, setLang] = useState("es");
   const { status } = useAuth();
   const s = STRINGS[lang];
+  const t = AFF_STRINGS[lang];
 
-  useEffect(() => { document.title = `${s.brand} · ${s.aff.appName}`; }, [s]);
+  useEffect(() => { document.title = `${s.brand} · ${t.appName}`; }, [s, t]);
 
   const center = { background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Inter', -apple-system, sans-serif" };
   if (supabaseConfigError) {
@@ -38,10 +40,10 @@ export default function AffiliatesApp() {
   if (status === "signed_out") return <Login s={s} lang={lang} setLang={setLang} />;
   if (status === "not_authorized") return <NotAuthorized s={s} />;
 
-  return <Shell s={s} lang={lang} setLang={setLang} />;
+  return <Shell s={s} t={t} lang={lang} setLang={setLang} />;
 }
 
-function Shell({ s, lang, setLang }) {
+function Shell({ s, t, lang, setLang }) {
   const [currency, setCurrencyUi] = useState(() => restoreCurrency());
   const [fxRate, setFxRate] = useState(null);
   const { session, member, signOut } = useAuth();
@@ -62,7 +64,7 @@ function Shell({ s, lang, setLang }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 26, height: 26, borderRadius: 7, background: `linear-gradient(135deg, ${C.accent}, ${C.accentDim})` }} />
           <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 15 }}>{s.brand}</span>
-          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, color: C.inkDim }}>· {s.aff.appName}</span>
+          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, color: C.inkDim }}>· {t.appName}</span>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 11.5, color: C.inkFaint, marginRight: 4 }}>{member?.name || session?.user?.email}</span>
@@ -75,7 +77,7 @@ function Shell({ s, lang, setLang }) {
             ))}
           </div>
           <button style={pill} onClick={() => setLang(l => (l === "es" ? "en" : "es"))}>🌐 {lang === "es" ? "Español" : "English"}</button>
-          <a style={pill} href="/">{s.aff.toMarketing} <ArrowUpRight size={13} /></a>
+          <a style={pill} href="/">{t.toMarketing} <ArrowUpRight size={13} /></a>
           <button style={{ ...pill, border: "none", color: C.inkFaint }} onClick={signOut}>{s.signOut}</button>
         </div>
       </header>

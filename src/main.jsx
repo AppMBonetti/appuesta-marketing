@@ -1,8 +1,7 @@
-import { StrictMode } from "react";
+import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
-import AffiliatesApp from "./AffiliatesApp.jsx";
 import { AuthProvider } from "./lib/AuthContext";
 
 // A deploy renames every hashed chunk, so a tab left open before it still holds
@@ -30,13 +29,18 @@ window.addEventListener("load", () => {
 });
 
 // Two dashboards, one build: /afiliados is the affiliate dashboard, everything
-// else is marketing. Netlify's SPA fallback serves index.html for both.
+// else is marketing. Netlify's SPA fallback serves index.html for both. The
+// affiliate dashboard is a separate chunk fetched only on its own path, so the
+// marketing dashboard loads exactly as it did before it existed.
+const AffiliatesApp = lazy(() => import("./AffiliatesApp.jsx"));
 const Root = /^\/(afiliados|affiliates)(\/|$)/i.test(window.location.pathname) ? AffiliatesApp : App;
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <AuthProvider>
-      <Root />
+      <Suspense fallback={null}>
+        <Root />
+      </Suspense>
     </AuthProvider>
   </StrictMode>,
 );

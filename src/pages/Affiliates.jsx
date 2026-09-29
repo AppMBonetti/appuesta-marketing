@@ -9,6 +9,7 @@ import { KpiCard, Panel, SectionHeading, Spinner, fmtDOP } from "../components/u
 import { downloadCsv } from "../lib/csv";
 import { parseAffiliateReportFile } from "../lib/importers/affiliateReport";
 import { upsertInChunks } from "../lib/importers/parseWorkbook";
+import { AFF_STRINGS } from "../lib/i18nAffiliates";
 
 const inputStyle = {
   background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 7,
@@ -464,7 +465,7 @@ function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
 }
 
 export default function Affiliates({ s, lang }) {
-  const t = s.aff;
+  const t = AFF_STRINGS[lang];
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
