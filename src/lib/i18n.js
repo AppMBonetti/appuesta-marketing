@@ -1,7 +1,7 @@
 export const STRINGS = {
   es: {
     brand: "Appuesta",
-    nav: { overview: "Resumen", acquisition: "Adquisición", funnel: "Depósitos", retention: "Retención y cohortes", vip: "Segmentos VIP", segments: "Segmentos", affiliates: "Afiliados", optimization: "Optimización", imports: "Importar datos", settings: "Configuración" },
+    nav: { overview: "Resumen", acquisition: "Adquisición", funnel: "Depósitos", retention: "Retención y cohortes", vip: "Segmentos VIP", segments: "Segmentos", affiliates: "Dashboard de afiliados", optimization: "Optimización", imports: "Importar datos", settings: "Configuración" },
     period: { week: "Semana", month: "Mes", custom: "Personalizado", vsWeek: "vs. semana anterior", vsMonth: "vs. mes anterior" },
     overviewTitle: "Resumen",
     kpi: { reg: "Nuevos registros", ftd: "FTDs", ftdRate: "Tasa FTD", ret30: "Retención 30d", caltv: "CAC : LTV", pace: "Meta mensual", onPace: "En ritmo" },
@@ -181,6 +181,7 @@ export const STRINGS = {
       legendGgr: "GGR", legendCashGgr: "GGR en efectivo", legendDeposits: "Depósitos",
     },
     aff: {
+      appName: "Afiliados", toMarketing: "Dashboard de marketing",
       title: "Afiliados e influencers", sub: "Jugadores registrados con el código de cada afiliado y la comisión que han generado",
       back: "Todos los afiliados", cancel: "Cancelar", deal: "Acuerdo", ofGgr: "del GGR", noDeal: "Sin comisión definida", inactive: "inactivo",
       emptyTitle: "Aún no hay afiliados", emptySub: "Crea un afiliado con su código y comisión, y luego sube su reporte de jugadores.",
@@ -366,7 +367,7 @@ export const STRINGS = {
   },
   en: {
     brand: "Appuesta",
-    nav: { overview: "Overview", acquisition: "Acquisition", funnel: "Deposits", retention: "Retention & Cohorts", vip: "VIP Segments", segments: "Segments", affiliates: "Affiliates", optimization: "Optimization", imports: "Data Import", settings: "Settings" },
+    nav: { overview: "Overview", acquisition: "Acquisition", funnel: "Deposits", retention: "Retention & Cohorts", vip: "VIP Segments", segments: "Segments", affiliates: "Affiliates dashboard", optimization: "Optimization", imports: "Data Import", settings: "Settings" },
     period: { week: "Week", month: "Month", custom: "Custom", vsWeek: "vs. previous week", vsMonth: "vs. previous month" },
     overviewTitle: "Overview",
     kpi: { reg: "New registrations", ftd: "FTDs", ftdRate: "FTD rate", ret30: "30d retention", caltv: "CAC : LTV", pace: "Monthly goal", onPace: "On pace" },
@@ -546,6 +547,7 @@ export const STRINGS = {
       legendGgr: "GGR", legendCashGgr: "Cash GGR", legendDeposits: "Deposits",
     },
     aff: {
+      appName: "Affiliates", toMarketing: "Marketing dashboard",
       title: "Affiliates & influencers", sub: "Players registered with each affiliate's code and the commission they have earned",
       back: "All affiliates", cancel: "Cancel", deal: "Deal", ofGgr: "of GGR", noDeal: "No commission set", inactive: "inactive",
       emptyTitle: "No affiliates yet", emptySub: "Create an affiliate with their code and commission, then upload their players report.",

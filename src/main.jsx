@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
+import AffiliatesApp from "./AffiliatesApp.jsx";
 import { AuthProvider } from "./lib/AuthContext";
 
 // A deploy renames every hashed chunk, so a tab left open before it still holds
@@ -28,10 +29,14 @@ window.addEventListener("load", () => {
   try { sessionStorage.removeItem(RELOAD_FLAG); } catch { /* storage unavailable */ }
 });
 
+// Two dashboards, one build: /afiliados is the affiliate dashboard, everything
+// else is marketing. Netlify's SPA fallback serves index.html for both.
+const Root = /^\/(afiliados|affiliates)(\/|$)/i.test(window.location.pathname) ? AffiliatesApp : App;
+
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <AuthProvider>
-      <App />
+      <Root />
     </AuthProvider>
   </StrictMode>,
 );

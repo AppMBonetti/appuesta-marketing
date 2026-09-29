@@ -14,7 +14,8 @@ export default function Login({ s, lang, setLang }) {
     setState("sending");
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: window.location.origin },
+      // Back to the dashboard the link was requested from (marketing or affiliates).
+      options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` },
     });
     setState(error ? "error" : "sent");
   }
