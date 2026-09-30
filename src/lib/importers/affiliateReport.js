@@ -6,8 +6,10 @@ import { playerIdFromExternal } from "./paymentsReport";
 // no column naming the affiliate, so the uploader states which one it is.
 // The player report's own headers are accepted too, so a per-player report
 // filtered the same way can be uploaded instead.
+// The report's "name" column (the player's full name) is deliberately not
+// mapped: the affiliate dashboards identify players by username only, which
+// comes from the player report.
 const HEADER_MAP = {
-  "name": "full_name",
   "player id": "player",
   "registered at": "registered_at",
   "registration date": "registered_at",
@@ -53,7 +55,6 @@ export async function parseAffiliateReportFile(file) {
     // falls back to the player report rather than reading it as zero.
     byId.set(playerId, {
       player_id: playerId,
-      full_name: toText(r.full_name),
       registered_at: toISOTimestamp(r.registered_at, "UTC"),
       first_deposit_date: toISOTimestamp(r.first_deposit_date, "UTC"),
       deposit_count: fields.has("deposit_count") ? (toNumber(r.deposit_count) ?? 0) : null,

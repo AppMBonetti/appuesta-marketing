@@ -138,6 +138,8 @@ function UploadPanel({ t, affiliate, onImported }) {
   const [phase, setPhase] = useState("idle"); // idle | parsing | preview | importing | done
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState(null);
+  // Start from scratch: drop the affiliate's current players, then load this file.
+  const [replace, setReplace] = useState(false);
 
   async function handleFile(file) {
     if (!file) return;
@@ -189,6 +191,10 @@ function UploadPanel({ t, affiliate, onImported }) {
     try {
       const now = new Date().toISOString();
       const rows = preview.players.map(p => ({ ...p, affiliate_code: affiliate.code, source_file: preview.file.name, updated_at: now }));
+      if (replace) {
+        const { error: delErr } = await supabase.from("affiliate_players").delete().eq("affiliate_code", affiliate.code);
+        if (delErr) throw delErr;
+      }
       await upsertInChunks(supabase, "affiliate_players", rows, "player_id");
       setPhase("done");
       setPreview(null);
@@ -201,6 +207,7 @@ function UploadPanel({ t, affiliate, onImported }) {
 
   function reset() {
     setPreview(null);
+    setReplace(false);
     setPhase("idle");
     if (input.current) input.current.value = "";
   }
@@ -242,8 +249,12 @@ function UploadPanel({ t, affiliate, onImported }) {
             <p style={{ ...line, color: C.negative }}>{t.upload.missing.replace("{cols}", preview.missingFields.map(f => t.upload.fields[f]).join(", "))}</p>
           )}
           {preview.unparsed.length > 0 && <p style={{ ...line, color: C.negative }}>{t.upload.unparsed.replace("{n}", preview.unparsed.length)}</p>}
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: replace ? C.negative : C.inkDim, marginTop: 12 }}>
+            <input type="checkbox" checked={replace} onChange={e => setReplace(e.target.checked)} />
+            {t.upload.replace.replace("{n}", fmtInt(affiliate.registrations + Number(affiliate.flagged || 0)))}
+          </label>
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <button style={btn(true)} onClick={confirm}>{t.upload.confirm.replace("{code}", affiliate.code)}</button>
+            <button style={btn(true)} onClick={confirm}>{(replace ? t.upload.confirmReplace : t.upload.confirm).replace("{code}", affiliate.code)}</button>
             <button style={btn(false)} onClick={reset}>{t.cancel}</button>
           </div>
         </div>
@@ -320,8 +331,7 @@ function PayoutsPanel({ t, lang, affiliate, payouts, onChanged }) {
 
 // Raw values for the statement an affiliate is sent: amounts unformatted, dates ISO.
 const PLAYER_CSV = [
-  { label: "player_id", value: p => p.player_id },
-  { label: "name", value: p => p.full_name || p.username },
+  { label: "username", value: p => p.username },
   { label: "registered_at", value: p => p.registered_at },
   { label: "first_deposit_date", value: p => p.first_deposit_date },
   { label: "deposits_dop", value: p => p.deposit_amount },
@@ -430,6 +440,14 @@ function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
     onReload();
   }
 
+  async function clearAll() {
+    const n = players?.length || 0;
+    if (!n || !window.confirm(t.players.confirmClear.replace("{n}", n).replace("{name}", affiliate.name))) return;
+    const { error: err } = await supabase.from("affiliate_players").delete().eq("affiliate_code", affiliate.code);
+    if (err) setError(err.message);
+    else refresh();
+  }
+
   async function unassign(playerId) {
     if (!window.confirm(t.players.confirmRemove)) return;
     const { error: err } = await supabase.from("affiliate_players").delete().eq("player_id", playerId);
@@ -439,7 +457,7 @@ function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
 
   const needle = search.trim().toLowerCase();
   const visible = (players || []).filter(p => !needle ||
-    [p.player_id, p.full_name, p.username, p.email].some(v => String(v || "").toLowerCase().includes(needle)));
+    String(p.username || "").toLowerCase().includes(needle));
 
   return (
     <>
@@ -486,6 +504,9 @@ function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
               onClick={() => downloadCsv(`appuesta-afiliado-${affiliate.code.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`, PLAYER_CSV, visible)}>
               <Download size={13} /> CSV
             </button>
+            <button style={{ ...btn(false), color: C.negative }} disabled={!players?.length} onClick={clearAll}>
+              <Trash2 size={13} /> {t.players.clear}
+            </button>
           </div>
         </div>
         {error && <div style={{ color: C.negative, fontSize: 12.5, padding: "0 16px 12px" }}>{error}</div>}
@@ -510,12 +531,14 @@ function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
                   return (
                     <tr key={p.player_id} style={{ opacity: p.is_flagged ? 0.5 : 1 }}>
                       <td style={tdStyle}>
-                        <div style={{ color: C.ink }}>{p.full_name || p.username || "—"}</div>
-                        <div style={{ fontSize: 11, color: C.inkFaint }}>
-                          {p.player_id}{p.username && p.full_name ? ` · ${p.username}` : ""}
-                          {p.is_flagged && <span style={{ color: C.negative }}> · {t.players.flagged}</span>}
-                          {!p.in_player_report && <span> · {t.players.notInReport}</span>}
-                        </div>
+                        <div style={{ color: p.username ? C.ink : C.inkFaint }}>{p.username || t.players.noUsername}</div>
+                        {(p.is_flagged || !p.in_player_report) && (
+                          <div style={{ fontSize: 11, color: C.inkFaint }}>
+                            {p.is_flagged && <span style={{ color: C.negative }}>{t.players.flagged}</span>}
+                            {p.is_flagged && !p.in_player_report && " · "}
+                            {!p.in_player_report && <span>{t.players.notInReport}</span>}
+                          </div>
+                        )}
                       </td>
                       <td style={tdStyle}>{fmtDate(p.registered_at, lang)}</td>
                       <td style={tdStyle}>{deposited ? <span style={{ color: C.positive }}>{p.first_deposit_date ? fmtDate(p.first_deposit_date, lang) : t.players.yes}</span> : <span style={{ color: C.inkFaint }}>—</span>}</td>

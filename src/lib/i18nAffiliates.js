@@ -21,7 +21,7 @@ export const AFF_STRINGS = {
       flagged: "{n} jugadores excluidos del cálculo (cuentas internas, de prueba o excluidas manualmente).",
     },
     upload: {
-      title: "Subir reporte de {name}", sub: "El CSV/XLSX de jugadores registrados con su código (name, playerId, registeredAt, totalDepositAmount, totalGGRSportsbook). Cada carga actualiza a los jugadores que trae y conserva los anteriores.",
+      title: "Subir reporte de {name}", sub: "El CSV/XLSX de jugadores registrados con su código (playerId, registeredAt, totalDepositAmount, totalGGRSportsbook). Cada carga actualiza a los jugadores que trae y conserva los anteriores.",
       choose: "Elegir archivo", noRows: "No se encontraron jugadores en el archivo.", done: "Reporte cargado.",
       summary: "{n} jugadores · {f} FTDs · depósitos {d} · GGR {g}",
       newSame: "{new} nuevos · {same} ya estaban con este afiliado",
@@ -31,6 +31,8 @@ export const AFF_STRINGS = {
       fields: { registered_at: "fecha de registro", deposit_amount: "depósitos", ggr: "GGR" },
       unparsed: "{n} filas sin un playerId válido se omitirán.",
       confirm: "Importar a {code}",
+      replace: "Empezar de cero: borrar los {n} jugadores actuales de este afiliado y dejar solo los de este archivo",
+      confirmReplace: "Reemplazar todo en {code}",
     },
     payouts: {
       title: "Pagos al afiliado", sub: "Registra cada pago hecho para llevar el saldo pendiente.",
@@ -44,10 +46,11 @@ export const AFF_STRINGS = {
       confirmRemove: "¿Quitar el acceso de {email}?", inactive: "El afiliado está inactivo: no podrá entrar al portal hasta reactivarlo.",
     },
     players: {
-      title: "Jugadores", search: "Buscar jugador…", empty: "Todavía no hay jugadores. Sube el reporte del afiliado arriba.",
+      title: "Jugadores", search: "Buscar usuario…", empty: "Todavía no hay jugadores. Sube el reporte del afiliado arriba.",
       player: "Jugador", registered: "Registro", ftd: "FTD", lastLogin: "Último acceso", yes: "Sí",
       flagged: "no cuenta", notInReport: "no está en el reporte de jugadores",
-      remove: "Quitar de este afiliado", confirmRemove: "¿Quitar a este jugador del afiliado? Dejará de contar para su comisión.",
+      remove: "Quitar de este afiliado", noUsername: "(sin usuario todavía)",
+      clear: "Borrar todos", confirmClear: "¿Borrar los {n} jugadores cargados de {name}? El acuerdo, los pagos y el acceso al portal se mantienen. Luego sube el reporte de nuevo.", confirmRemove: "¿Quitar a este jugador del afiliado? Dejará de contar para su comisión.",
     },
   },
   en: {
@@ -70,7 +73,7 @@ export const AFF_STRINGS = {
       flagged: "{n} players left out of the calculation (internal, test or manually excluded accounts).",
     },
     upload: {
-      title: "Upload {name}'s report", sub: "The CSV/XLSX of players registered with their code (name, playerId, registeredAt, totalDepositAmount, totalGGRSportsbook). Each upload updates the players it contains and keeps earlier ones.",
+      title: "Upload {name}'s report", sub: "The CSV/XLSX of players registered with their code (playerId, registeredAt, totalDepositAmount, totalGGRSportsbook). Each upload updates the players it contains and keeps earlier ones.",
       choose: "Choose file", noRows: "No players found in the file.", done: "Report uploaded.",
       summary: "{n} players · {f} FTDs · deposits {d} · GGR {g}",
       newSame: "{new} new · {same} already with this affiliate",
@@ -80,6 +83,8 @@ export const AFF_STRINGS = {
       fields: { registered_at: "registration date", deposit_amount: "deposits", ggr: "GGR" },
       unparsed: "{n} rows without a valid playerId will be skipped.",
       confirm: "Import to {code}",
+      replace: "Start from scratch: delete this affiliate's {n} current players and keep only this file's",
+      confirmReplace: "Replace everything in {code}",
     },
     payouts: {
       title: "Payouts", sub: "Log each payment made to keep the balance due current.",
@@ -93,10 +98,11 @@ export const AFF_STRINGS = {
       confirmRemove: "Remove access for {email}?", inactive: "This affiliate is inactive: they can't sign into the portal until reactivated.",
     },
     players: {
-      title: "Players", search: "Search player…", empty: "No players yet. Upload the affiliate's report above.",
+      title: "Players", search: "Search username…", empty: "No players yet. Upload the affiliate's report above.",
       player: "Player", registered: "Registered", ftd: "FTD", lastLogin: "Last login", yes: "Yes",
       flagged: "doesn't count", notInReport: "not in player report",
-      remove: "Remove from this affiliate", confirmRemove: "Remove this player from the affiliate? They'll stop counting toward their commission.",
+      remove: "Remove from this affiliate", noUsername: "(no username yet)",
+      clear: "Delete all", confirmClear: "Delete all {n} uploaded players for {name}? The deal, payouts and portal access are kept. Then upload the report again.", confirmRemove: "Remove this player from the affiliate? They'll stop counting toward their commission.",
     },
   },
 };
