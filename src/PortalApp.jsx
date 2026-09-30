@@ -24,6 +24,12 @@ export default function PortalApp() {
 
   useEffect(() => { document.title = `${s.brand} · ${t.appName}`; }, [s, t]);
 
+  // A team member who isn't also linked to an affiliate has nothing to see
+  // here, but everything on /afiliados: send them there rather than to a
+  // "no access" screen.
+  const teamOnly = summary === null && status === "authorized";
+  useEffect(() => { if (teamOnly) window.location.replace("/afiliados"); }, [teamOnly]);
+
   const signedIn = !!session && status !== "loading" && status !== "checking_membership";
   useEffect(() => {
     if (!signedIn) return;
@@ -40,7 +46,8 @@ export default function PortalApp() {
     return <Login s={{ ...s, loginTitle: t.loginTitle, loginSub: t.loginSub }} lang={lang} setLang={setLang} />;
   }
   if (!signedIn || summary === undefined) return <div style={center}><Spinner size={22} /></div>;
-  if (!summary) return <NoAccess s={s} t={t} teamMember={status === "authorized"} />;
+  if (teamOnly) return <div style={center}><Spinner size={22} /></div>;
+  if (!summary) return <NoAccess s={s} t={t} teamMember={false} />;
 
   return <Portal s={s} t={t} lang={lang} setLang={setLang} summary={summary} />;
 }
