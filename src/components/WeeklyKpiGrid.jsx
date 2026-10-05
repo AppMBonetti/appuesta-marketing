@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { C } from "../lib/theme";
-import { weekRangeLabel, previousWeek } from "../lib/period";
+import { weekRangeLabel, previousWeek, weekMonthSplit, formatMonth } from "../lib/period";
 import { WEEKLY_KPI_GROUPS, wowChange } from "../lib/metrics";
 import { fmtMoney } from "../lib/currency";
 import { Spinner } from "./ui";
@@ -71,11 +71,25 @@ export default function WeeklyKpiGrid({ s, lang, weeks, rowsByWeek, onEditSpend,
         <thead>
           <tr>
             <th style={{ ...labelCell, ...headCell, textAlign: "left", zIndex: 3, color: C.inkDim }}>{s.wk.kpi}</th>
-            {weeks.map(week => (
-              <th key={week} colSpan={2} style={{ ...headCell, textAlign: "center", borderLeft: `1px solid ${C.panelBorder}` }}>
-                {weekRangeLabel(week, lang)}
-              </th>
-            ))}
+            {weeks.map(week => {
+              // A week that crosses a month boundary is counted whole, under the
+              // month holding most of its days, so its total cannot match the
+              // month tile beside it. Say so rather than let it read as an error.
+              const split = weekMonthSplit(week);
+              return (
+                <th key={week} colSpan={2} style={{ ...headCell, textAlign: "center", borderLeft: `1px solid ${C.panelBorder}` }}>
+                  {weekRangeLabel(week, lang)}
+                  {split.straddles && (
+                    <span
+                      title={s.wk.straddles
+                        .replace("{n}", String(split.outside))
+                        .replace("{month}", formatMonth(split.otherMonth, lang))}
+                      style={{ color: "#D9A848", marginLeft: 4, cursor: "help" }}
+                    >*</span>
+                  )}
+                </th>
+              );
+            })}
           </tr>
           <tr>
             <th style={{ ...labelCell, ...headCell, textAlign: "left", zIndex: 3 }} />

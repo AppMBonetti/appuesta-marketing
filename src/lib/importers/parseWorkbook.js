@@ -372,28 +372,40 @@ async function readSheetRowsNamespaceTolerant(file) {
     }
   }
 
-  // Resolve the first sheet through the workbook's relationships, falling back
-  // to the conventional path when the parts are missing or unreadable.
-  let sheetPath = "xl/worksheets/sheet1.xml";
+  // Resolve EVERY sheet through the workbook's relationships, in workbook order,
+  // falling back to the conventional path when the parts are missing. Reading
+  // only the first one left the table unreachable in any workbook ExcelJS
+  // refuses: these exports open with a Properties sheet and put the rows second.
+  const sheetPaths = [];
   const workbookXml = await readPart("xl/workbook.xml");
   const relsXml = await readPart("xl/_rels/workbook.xml.rels");
   if (workbookXml && relsXml) {
-    const firstSheet = [...xmlElements(workbookXml, "sheet")][0];
-    const relId = firstSheet ? xmlAttr(firstSheet[0], "r:id") || xmlAttr(firstSheet[0], "id") : null;
-    if (relId) {
-      for (const [attrs] of xmlElements(relsXml, "Relationship")) {
-        if (xmlAttr(attrs, "Id") === relId) {
-          const target = xmlAttr(attrs, "Target");
-          if (target) sheetPath = target.replace(/^\//, "").replace(/^(?!xl\/)/, "xl/");
-          break;
-        }
-      }
+    const targets = new Map();
+    for (const [attrs] of xmlElements(relsXml, "Relationship")) {
+      const id = xmlAttr(attrs, "Id");
+      const target = xmlAttr(attrs, "Target");
+      if (id && target) targets.set(id, target.replace(/^\//, "").replace(/^(?!xl\/)/, "xl/"));
+    }
+    for (const [attrs] of xmlElements(workbookXml, "sheet")) {
+      const relId = xmlAttr(attrs, "r:id") || xmlAttr(attrs, "id");
+      const path = relId ? targets.get(relId) : null;
+      if (path) sheetPaths.push(path);
     }
   }
+  if (!sheetPaths.length) sheetPaths.push("xl/worksheets/sheet1.xml");
 
-  const sheetXml = await readPart(sheetPath);
-  if (!sheetXml) throw new Error("No worksheet found in file");
+  const sheets = [];
+  for (const sheetPath of sheetPaths) {
+    const sheetXml = await readPart(sheetPath);
+    if (!sheetXml) continue;
+    sheets.push(rowsOfSheetXml(sheetXml, sharedStrings));
+  }
+  if (!sheets.length) throw new Error("No worksheet found in file");
+  return sheets;
+}
 
+/** One worksheet's XML as raw row arrays. */
+function rowsOfSheetXml(sheetXml, sharedStrings) {
   const rows = [];
   for (const [, rowXml] of xmlElements(sheetXml, "row")) {
     const cells = [];
@@ -484,7 +496,7 @@ async function readSheetCandidates(file) {
     // ExcelJS rejects namespace-prefixed workbooks (Altenar's exporter writes
     // them); the tolerant reader handles those rather than failing the import.
   }
-  return [await readSheetRowsNamespaceTolerant(file)];
+  return await readSheetRowsNamespaceTolerant(file);
 }
 
 /**

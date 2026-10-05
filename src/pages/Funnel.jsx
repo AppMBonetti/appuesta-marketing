@@ -9,6 +9,7 @@ import { getPeriodRange, formatWeek } from "../lib/period";
 import { SectionHeading, Panel, KpiCard, PeriodBar, Spinner, fmtDOP, deltaOf, EmptyState } from "../components/ui";
 import GgrReconciliation from "../components/GgrReconciliation";
 import DepositTrends from "../components/DepositTrends";
+import DepositDaily from "../components/DepositDaily";
 
 async function countDepositStage(minCount, start, end) {
   const { count, error } = await supabase
@@ -66,6 +67,8 @@ export default function Funnel({ s, lang }) {
   const [topGgr, setTopGgr] = useState([]);
   const [depositWeeks, setDepositWeeks] = useState([]);
   const [depositMonths, setDepositMonths] = useState([]);
+  const [depositDays, setDepositDays] = useState([]);
+  const [depositMethods, setDepositMethods] = useState([]);
 
   const stages = [
     { key: "reg", min: 0, stageEs: "Registro", stageEn: "Registration" },
@@ -108,7 +111,7 @@ export default function Funnel({ s, lang }) {
 
         // Everything below is cumulative rather than period-scoped: tier totals,
         // the weekly series, and the GGR leaderboard all describe the book to date.
-        const [tiersRes, dailyRes, ftdRes, betsRes, topRes, weekRes, monthRes] = await Promise.all([
+        const [tiersRes, dailyRes, ftdRes, betsRes, topRes, weekRes, monthRes, dayRes, methodRes] = await Promise.all([
           supabase.from("vip_tier_summary").select("*").order("tier_order"),
           supabase.from("deposits_by_period").select("*").order("period_start"),
           supabase.from("ftd_weekly").select("*").order("week_start"),
@@ -119,6 +122,8 @@ export default function Funnel({ s, lang }) {
             .limit(10),
           supabase.from("deposits_weekly").select("*").order("week_start"),
           supabase.from("deposits_monthly").select("*").order("month_start"),
+          supabase.from("deposits_daily").select("*").order("day"),
+          supabase.from("deposit_method_performance").select("*"),
         ]);
         if (tiersRes.error) throw tiersRes.error;
         if (dailyRes.error) throw dailyRes.error;
@@ -127,6 +132,10 @@ export default function Funnel({ s, lang }) {
         if (topRes.error) throw topRes.error;
         if (weekRes.error) throw weekRes.error;
         if (monthRes.error) throw monthRes.error;
+        // The transaction export is optional: without it these are simply empty
+        // and the sections they feed do not render.
+        if (dayRes.error) throw dayRes.error;
+        if (methodRes.error) throw methodRes.error;
 
         if (!active) return;
         setTierRows(tiersRes.data || []);
@@ -138,6 +147,8 @@ export default function Funnel({ s, lang }) {
         setTopGgr(topRes.data || []);
         setDepositWeeks(weekRes.data || []);
         setDepositMonths(monthRes.data || []);
+        setDepositDays(dayRes.data || []);
+        setDepositMethods(methodRes.data || []);
       } catch (e) {
         if (active) setError(e.message);
       } finally {
@@ -213,6 +224,8 @@ export default function Funnel({ s, lang }) {
       {!loading && !error && view === "deposits" && data && (
         <>
           <DepositTrends s={s} lang={lang} weeks={depositWeeks} months={depositMonths} />
+
+          <DepositDaily s={s} lang={lang} days={depositDays} methods={depositMethods} />
 
           <SectionHeading title={s.dep.funnelTitle} subtitle={s.dep.funnelSub} />
           <PeriodBar {...periodBarProps} />
