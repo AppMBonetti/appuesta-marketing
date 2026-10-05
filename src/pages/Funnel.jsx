@@ -8,10 +8,11 @@ import { C } from "../lib/theme";
 import { getPeriodRange, formatWeek } from "../lib/period";
 import { SectionHeading, Panel, KpiCard, PeriodBar, Spinner, fmtDOP, deltaOf, EmptyState } from "../components/ui";
 import GgrReconciliation from "../components/GgrReconciliation";
+import DepositTrends from "../components/DepositTrends";
 
 async function countDepositStage(minCount, start, end) {
   const { count, error } = await supabase
-    .from("players")
+    .from("real_players")
     .select("*", { count: "exact", head: true })
     .gte("registered_at", start)
     .lt("registered_at", end)
@@ -63,6 +64,8 @@ export default function Funnel({ s, lang }) {
   const [ftdWeekly, setFtdWeekly] = useState([]);
   const [betsWeekly, setBetsWeekly] = useState([]);
   const [topGgr, setTopGgr] = useState([]);
+  const [depositWeeks, setDepositWeeks] = useState([]);
+  const [depositMonths, setDepositMonths] = useState([]);
 
   const stages = [
     { key: "reg", min: 0, stageEs: "Registro", stageEn: "Registration" },
@@ -86,7 +89,7 @@ export default function Funnel({ s, lang }) {
         const previousCounts = previous ? await Promise.all(stages.map(st => countDepositStage(st.min, previous.start, previous.end))) : stages.map(() => null);
 
         const { data: depRows, error: depErr } = await supabase
-          .from("players")
+          .from("real_players")
           .select("avg_deposit_amount, avg_sportsbook_bet_amount")
           .gte("registered_at", current.start)
           .lt("registered_at", current.end)
@@ -105,7 +108,7 @@ export default function Funnel({ s, lang }) {
 
         // Everything below is cumulative rather than period-scoped: tier totals,
         // the weekly series, and the GGR leaderboard all describe the book to date.
-        const [tiersRes, dailyRes, ftdRes, betsRes, topRes] = await Promise.all([
+        const [tiersRes, dailyRes, ftdRes, betsRes, topRes, weekRes, monthRes] = await Promise.all([
           supabase.from("vip_tier_summary").select("*").order("tier_order"),
           supabase.from("deposits_by_period").select("*").order("period_start"),
           supabase.from("ftd_weekly").select("*").order("week_start"),
@@ -114,12 +117,16 @@ export default function Funnel({ s, lang }) {
             .not("total_ggr_sportsbook", "is", null)
             .order("total_ggr_sportsbook", { ascending: false })
             .limit(10),
+          supabase.from("deposits_weekly").select("*").order("week_start"),
+          supabase.from("deposits_monthly").select("*").order("month_start"),
         ]);
         if (tiersRes.error) throw tiersRes.error;
         if (dailyRes.error) throw dailyRes.error;
         if (ftdRes.error) throw ftdRes.error;
         if (betsRes.error) throw betsRes.error;
         if (topRes.error) throw topRes.error;
+        if (weekRes.error) throw weekRes.error;
+        if (monthRes.error) throw monthRes.error;
 
         if (!active) return;
         setTierRows(tiersRes.data || []);
@@ -129,6 +136,8 @@ export default function Funnel({ s, lang }) {
         setFtdWeekly(ftdRes.data || []);
         setBetsWeekly(betsRes.data || []);
         setTopGgr(topRes.data || []);
+        setDepositWeeks(weekRes.data || []);
+        setDepositMonths(monthRes.data || []);
       } catch (e) {
         if (active) setError(e.message);
       } finally {
@@ -188,8 +197,8 @@ export default function Funnel({ s, lang }) {
   return (
     <>
       <SectionHeading
-        title={view === "deposits" ? s.funnelTitle : s.ggrTitle}
-        subtitle={view === "deposits" ? s.funnelSub : s.ggrSub}
+        title={view === "deposits" ? s.dep.tabTitle : s.ggrTitle}
+        subtitle={view === "deposits" ? s.dep.tabSub : s.ggrSub}
       />
 
       <div style={{ display: "flex", marginBottom: 16, background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2, width: "fit-content" }}>
@@ -198,13 +207,15 @@ export default function Funnel({ s, lang }) {
         ))}
       </div>
 
-      {view === "deposits" && <PeriodBar {...periodBarProps} />}
-
       {loading && <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spinner size={22} /></div>}
       {error && <Panel style={{ color: C.negative, marginBottom: 20 }}>{error}</Panel>}
 
       {!loading && !error && view === "deposits" && data && (
         <>
+          <DepositTrends s={s} lang={lang} weeks={depositWeeks} months={depositMonths} />
+
+          <SectionHeading title={s.dep.funnelTitle} subtitle={s.dep.funnelSub} />
+          <PeriodBar {...periodBarProps} />
           <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
             <KpiCard icon={Wallet} label={s.avgDeposit} value={fmtDOP(data.avgDeposit)} />
             <KpiCard icon={TrendingUp} label={s.avgBet} value={fmtDOP(data.avgBet)} />
