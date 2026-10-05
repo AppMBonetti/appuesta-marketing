@@ -138,6 +138,28 @@ export function weeksInMonth(monthISO) {
   return out;
 }
 
+/**
+ * How a week sits across the month boundary.
+ *
+ * A week belongs to whichever month holds most of its days, so the week of
+ * 28 Sep - 4 Oct is filed under October while three of its days are September.
+ * That is deliberate, but it makes the month tile and the week column report
+ * different totals with nothing on screen saying why — this is what lets the
+ * grid mark it.
+ */
+export function weekMonthSplit(weekISO) {
+  const [y, m, d] = weekISO.split("-").map(Number);
+  const month = monthOfWeek(weekISO);
+  let outside = 0;
+  let otherMonth = null;
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(Date.UTC(y, m - 1, d + i));
+    const dayMonth = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    if (dayMonth !== month) { outside += 1; otherMonth = dayMonth; }
+  }
+  return { straddles: outside > 0, outside, otherMonth, month };
+}
+
 export function previousWeek(weekISO) {
   const [y, m, d] = weekISO.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));

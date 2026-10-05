@@ -10,6 +10,7 @@ import { parseGa4File } from "../lib/importers/ga4";
 import { parseInstagramFile } from "../lib/importers/instagram";
 import { parsePlayerReportFile } from "../lib/importers/playerReport";
 import { parsePaymentsReportFile } from "../lib/importers/paymentsReport";
+import { parsePaymentsExportFile } from "../lib/importers/paymentsExport";
 import { upsertInChunks, SOURCE_TIMEZONE, IMPORT_TIMEZONES, timezoneShiftHours, zoneCancellingShift } from "../lib/importers/parseWorkbook";
 
 // How many of a batch's bets belong to players the dashboard has never been
@@ -112,6 +113,7 @@ async function compareWithStored(bets) {
 const CARD_DEFS = [
   { source: "Player Report", labelKey: "playerReportCard", noteKey: "playerReportNote" },
   { source: "Payments Report", labelKey: "paymentsReportCard", noteKey: "paymentsReportNote" },
+  { source: "Payments Export", labelKey: "paymentsExportCard", noteKey: "paymentsExportNote" },
   { source: "Altenar", labelKey: "altenarCard", noteKey: "altenarNote" },
   { source: "GA4", labelKey: "ga4Card" },
   { source: "Instagram", labelKey: "instagramCard" },
@@ -273,6 +275,33 @@ export default function Imports({ s, lang }) {
         if (logErr) throw logErr;
 
         setPhase(source, "done", { rowCount: periods.length, unmatchedHeaders, unparsedPlayers, summary, period, scope });
+      } else if (source === "Payments Export") {
+        const { transactions, period, unmatchedHeaders, unparsedPlayers,
+                unexpectedCurrencies, expectedCurrency, summary } = await parsePaymentsExportFile(file);
+        if (transactions.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
+
+        if (unexpectedCurrencies.length) {
+          throw new Error(
+            s.currencyBlocked
+              .replace("{found}", unexpectedCurrencies.join(", "))
+              .replaceAll("{expected}", expectedCurrency)
+          );
+        }
+
+        setPhase(source, "importing");
+        // Keyed on the transaction id, so re-exporting an overlapping range
+        // restates the same attempts rather than doubling them -- and a
+        // transaction that was pending last week lands with its settled status.
+        await upsertInChunks(supabase, "payment_transactions", transactions, "id");
+
+        setPhase(source, "logging");
+        const { error: logErr } = await supabase.from("data_imports").insert({
+          source, filename: file.name, row_count: transactions.length, status: "success",
+          period_start: period?.start ?? null, period_end: period?.end ?? null,
+        });
+        if (logErr) throw logErr;
+
+        setPhase(source, "done", { rowCount: transactions.length, unmatchedHeaders, unparsedPlayers, summary, period });
       } else if (source === "Instagram") {
         const { rows, unmatchedHeaders, coverage } = await parseInstagramFile(file);
         if (rows.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
@@ -490,7 +519,7 @@ export default function Imports({ s, lang }) {
                         )}
                       </div>
                     )}
-                    {state.period && (
+                    {state.period && state.summary?.players != null && (
                       <div style={{ color: C.inkDim, marginTop: 4 }}>
                         {s.depositsForPeriod
                           .replace("{a}", state.period.start)
@@ -508,6 +537,31 @@ export default function Imports({ s, lang }) {
                         )}
                         {state.scope === "validation" && (
                           <div style={{ color: C.negative }}>{s.periodValidationOnly}</div>
+                        )}
+                      </div>
+                    )}
+                    {state.summary?.byStatus && (
+                      <div style={{ color: C.inkDim, marginTop: 4 }}>
+                        {state.period && (
+                          <div>
+                            {s.exportRange.replace("{a}", state.period.start).replace("{b}", state.period.end)}
+                          </div>
+                        )}
+                        <div>
+                          {s.exportDeposits
+                            .replace("{n}", state.summary.depositCount.toLocaleString())
+                            .replace("{amt}", fmtDOP(state.summary.depositAmount))}
+                        </div>
+                        {state.summary.failedCount > 0 && (
+                          // The attempts that never landed are the whole reason
+                          // this file is worth more than the grouped report.
+                          <div style={{ color: C.negative }}>
+                            {s.exportFailed
+                              .replace("{n}", state.summary.failedCount.toLocaleString())
+                              .replace("{amt}", fmtDOP(state.summary.failedAmount))
+                              .replace("{pct}", state.summary.successPct == null
+                                ? "—" : `${state.summary.successPct.toFixed(0)}%`)}
+                          </div>
                         )}
                       </div>
                     )}
