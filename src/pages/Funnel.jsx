@@ -232,9 +232,9 @@ export default function Funnel({ s, lang }) {
           <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
             <KpiCard icon={Wallet} label={s.avgDeposit} value={fmtDOP(data.avgDeposit)} />
             <KpiCard icon={TrendingUp} label={s.avgBet} value={fmtDOP(data.avgBet)} />
-            <KpiCard icon={PiggyBank} label={s.ggrKpi.deposits} value={fmtDOP(totalDeposits)} />
+            <KpiCard icon={PiggyBank} label={s.dep.allTimeDeposits} value={fmtDOP(totalDeposits)} />
             {hasPayoutData && (
-              <KpiCard icon={ArrowLeftRight} label={s.netCashKpi} value={fmtDOP(netCashTotal)} />
+              <KpiCard icon={ArrowLeftRight} label={s.dep.allTimeNetCash} value={fmtDOP(netCashTotal)} />
             )}
           </div>
 

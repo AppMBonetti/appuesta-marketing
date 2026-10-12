@@ -65,6 +65,14 @@ export default function GoalTracker({ s, lang, month = currentBudgetMonth() }) {
     costPerAcquisition: ftds > 0 ? spend / ftds : null,
   };
 
+  // Deposits are known per reporting period, and a period straddling the month
+  // boundary cannot be split, so kpis_for_range leaves it out of the month
+  // entirely. The total is then a floor, not the month's deposits -- October
+  // reads 3,696,304 while the week of 28 Sep - 4 Oct, worth 1,186,080, sits
+  // outside it. Judging that against a monthly target without saying so reports
+  // a shortfall the business did not have.
+  const depositsPartial = rows?.deposits_partial === true;
+
   const elapsed = monthElapsed(month);
   const tracked = TRACKED.filter(t => goals[t.key] > 0);
 
@@ -114,6 +122,12 @@ export default function GoalTracker({ s, lang, month = currentBudgetMonth() }) {
             }}>
               <div style={{ fontSize: 11.5, color: C.inkDim, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 8 }}>
                 {s.cfg.goals[t.key]}
+                {t.metric === "depositAmount" && depositsPartial && (
+                  <span title={s.goalTrack.depositsPartialHint}
+                    style={{ color: "#D9A848", marginLeft: 5, cursor: "help", textTransform: "none" }}>
+                    {s.goalTrack.incomplete}
+                  </span>
+                )}
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 7, marginBottom: 9 }}>
                 <span style={{ fontSize: 19, fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{fmt(actual)}</span>
