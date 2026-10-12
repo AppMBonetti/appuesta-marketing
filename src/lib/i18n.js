@@ -151,6 +151,8 @@ export const STRINGS = {
       title: "Contra la meta del mes", sub: "Acumulado del mes vs. la meta fijada en Configuración",
       none: "Sin metas fijadas para este mes — configúralas en Configuración.",
       pace: "Ritmo necesario", onPace: "En ritmo", behind: "Por debajo", ahead: "Por encima",
+      incomplete: "(incompleto)",
+      depositsPartialHint: "Falta al menos un período del reporte de pagos que cruza el borde del mes. Los depósitos se conocen por período, y un período a caballo entre dos meses no se puede repartir, así que queda fuera del mes entero. La cifra es un piso, no el total del mes.",
       ofMonth: "del mes transcurrido", target: "Meta", actual: "Real", remaining: "Falta",
     },
     coverageBar: {
@@ -249,6 +251,7 @@ export const STRINGS = {
     depByTierTitle: "Depósitos por segmento VIP", depByTierSub: "Total depositado y depósito promedio, por nivel",
     dep: {
       tabTitle: "Depósitos", tabSub: "Volumen, depositantes y el embudo de registro a depósito",
+      allTimeDeposits: "Total depositado (histórico)", allTimeNetCash: "Caja neta (histórica)",
       dailyTitle: "Depósitos por día", dailySub: "Del export de transacciones, que trae la fecha exacta de cada depósito",
       day: "Día",
       dailyTotals: "{n} depósitos completados por {amt} en {d} días con actividad.",
@@ -503,6 +506,8 @@ export const STRINGS = {
       title: "Against the monthly goal", sub: "Month to date versus the goal set in Configuration",
       none: "No goals set for this month — configure them in Configuration.",
       pace: "Required pace", onPace: "On pace", behind: "Behind", ahead: "Ahead",
+      incomplete: "(incomplete)",
+      depositsPartialHint: "At least one payments-report period crosses the month boundary and is missing. Deposits are known per period, and a period straddling two months cannot be split, so it is left out of the month entirely. The figure is a floor, not the month's total.",
       ofMonth: "of the month elapsed", target: "Target", actual: "Actual", remaining: "Remaining",
     },
     coverageBar: {
@@ -601,6 +606,7 @@ export const STRINGS = {
     depByTierTitle: "Deposits by VIP segment", depByTierSub: "Total deposited and average deposit, by tier",
     dep: {
       tabTitle: "Deposits", tabSub: "Volume, depositors and the registration-to-deposit funnel",
+      allTimeDeposits: "Total deposited (all time)", allTimeNetCash: "Net cash (all time)",
       dailyTitle: "Deposits by day", dailySub: "From the transaction export, which carries the exact date of each deposit",
       day: "Day",
       dailyTotals: "{n} completed deposits worth {amt} across {d} days with activity.",
