@@ -7,15 +7,6 @@ import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../component
 
 // Ordered by where a player sits in the funnel, not alphabetically, so the
 // strip reads as a lifecycle rather than a list.
-// player_lifecycle carries days_since_login and days_inactive but not the age of
-// the last deposit, so it is derived here rather than widening the view.
-function daysSince(timestamp) {
-  if (!timestamp) return null;
-  const then = new Date(timestamp);
-  if (Number.isNaN(then.getTime())) return null;
-  return Math.floor((Date.now() - then.getTime()) / 86400000);
-}
-
 const STAGES = ["Registered", "New", "Casual", "Active", "Cooling", "At risk", "Churned"];
 const STAGE_COLORS = {
   Registered: "#8B93A3", New: "#6E9BF2", Casual: "#B073F0", Active: "#3ECB9E",
@@ -75,7 +66,8 @@ const CSV_COLUMNS = [
   { label: "days_since_login", value: p => p.days_since_login },
   { label: "login_recency", value: p => p.login_recency },
   { label: "last_deposit", value: p => p.last_deposit_date },
-  { label: "days_since_deposit", value: p => daysSince(p.last_deposit_date) },
+  { label: "days_since_deposit", value: p => p.days_since_deposit },
+  { label: "days_since_bet", value: p => p.days_since_bet },
   { label: "engaged_not_depositing", value: p => (p.engaged_not_depositing ? "yes" : "no") },
 ];
 
@@ -210,7 +202,6 @@ export default function Segments({ s, lang }) {
   const th = { padding: "9px 12px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 11.5, whiteSpace: "nowrap" };
   const td = { padding: "8px 12px", fontSize: 12.5, whiteSpace: "nowrap" };
   const dateOf = v => (v ? String(v).slice(0, 10) : s.seg.never);
-  const depositAge = p => daysSince(p.last_deposit_date);
 
   function exportSegment() {
     const parts = [filters.stage, filters.tier, filters.sport, filters.login,
@@ -323,8 +314,8 @@ export default function Segments({ s, lang }) {
                 {[s.seg.cols.id, s.seg.cols.player, s.seg.cols.lifecycle, s.seg.cols.tier,
                   s.seg.cols.deposits, s.seg.cols.depositCount, s.seg.cols.ggr, s.seg.cols.bets,
                   s.seg.cols.stake, s.seg.cols.avgStake, s.seg.cols.topSport,
-                  s.seg.cols.lastActivity, s.seg.cols.daysInactive,
-                  s.seg.cols.lastLogin, s.seg.cols.lastDeposit, s.seg.cols.daysSinceDeposit,
+                  s.seg.cols.lastLogin, s.seg.cols.lastBet, s.seg.cols.lastDeposit,
+                  s.seg.cols.daysSinceDeposit,
                   ""].map((h, i) => <th key={h || `act${i}`} style={th}>{h}</th>)}
               </tr>
             </thead>
@@ -365,36 +356,45 @@ export default function Segments({ s, lang }) {
                           </span>)}</>
                       : "—"}
                   </td>
-                  <td style={{ ...td, color: C.inkDim }}>{dateOf(p.last_activity)}</td>
-                  <td style={{ ...td, color: p.days_inactive >= 15 ? C.negative : C.inkDim }}>
-                    {p.days_inactive ?? "—"}
-                  </td>
                   <td style={{ ...td, color: C.inkDim }}>
-                    {p.days_since_login == null ? "—" : (
-                      <>
+                    {dateOf(p.last_login_at)}
+                    {p.days_since_login != null && (
+                      <span style={{ color: C.inkFaint, fontSize: 11, marginLeft: 5 }}>
                         {s.seg.daysAgo.replace("{n}", String(p.days_since_login))}
-                        {p.engaged_not_depositing && (
-                          // Logged in this week but not paying: the one segment
-                          // where the right action is an offer, not a win-back.
-                          <span title={s.seg.engagedHint} style={{ color: "#4FA3D1", fontSize: 10, border: "1px solid #4FA3D155", borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
-                            {s.seg.engagedTag}
-                          </span>
-                        )}
-                      </>
+                      </span>
                     )}
                   </td>
-                  <td style={{ ...td, color: C.inkDim }}>{dateOf(p.last_deposit_date)}</td>
+                  <td style={{ ...td, color: C.inkDim }}>
+                    {dateOf(p.last_bet_date)}
+                    {p.days_since_bet != null && (
+                      <span style={{ color: C.inkFaint, fontSize: 11, marginLeft: 5 }}>
+                        {s.seg.daysAgo.replace("{n}", String(p.days_since_bet))}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ ...td, color: C.inkDim }}>
+                    {dateOf(p.last_deposit_date)}
+                    {p.engaged_not_depositing && (
+                          // Logged in this week but not paying: the one segment
+                          // where the right action is an offer, not a win-back.
+                      // Turns up but has not paid in over a week. The one case
+                      // where the right move is an offer, not a win-back.
+                      <span title={s.seg.engagedHint} style={{ color: "#4FA3D1", fontSize: 10, border: "1px solid #4FA3D155", borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
+                        {s.seg.engagedTag}
+                      </span>
+                    )}
+                  </td>
                   <td style={{
                     ...td,
-                    // The number that decides whether someone is still paying.
-                    // Amber from a week, red from a month, matching the points
-                    // where the stage ladder would move them if it counted
-                    // deposits rather than any activity.
-                    color: depositAge(p) == null ? C.inkFaint
-                      : depositAge(p) >= 30 ? C.negative
-                      : depositAge(p) >= 8 ? "#D9A848" : C.inkDim,
+                    // The number the stage is now built on. Amber from eight
+                    // days, red from thirty: the points where the ladder moves
+                    // a player to Cooling and to Churned.
+                    color: p.days_since_deposit == null ? C.inkFaint
+                      : p.days_since_deposit >= 30 ? C.negative
+                      : p.days_since_deposit >= 8 ? "#D9A848" : C.inkDim,
+                    fontWeight: p.days_since_deposit >= 8 ? 600 : 400,
                   }}>
-                    {depositAge(p) == null ? "—" : s.seg.daysAgo.replace("{n}", String(depositAge(p)))}
+                    {p.days_since_deposit == null ? "—" : s.seg.daysAgo.replace("{n}", String(p.days_since_deposit))}
                   </td>
                   <td style={{ ...td, width: "1%" }}>
                     {/* Removes the player from every figure on the dashboard,
