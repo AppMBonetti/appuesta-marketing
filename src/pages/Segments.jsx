@@ -7,6 +7,15 @@ import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../component
 
 // Ordered by where a player sits in the funnel, not alphabetically, so the
 // strip reads as a lifecycle rather than a list.
+// player_lifecycle carries days_since_login and days_inactive but not the age of
+// the last deposit, so it is derived here rather than widening the view.
+function daysSince(timestamp) {
+  if (!timestamp) return null;
+  const then = new Date(timestamp);
+  if (Number.isNaN(then.getTime())) return null;
+  return Math.floor((Date.now() - then.getTime()) / 86400000);
+}
+
 const STAGES = ["Registered", "New", "Casual", "Active", "Cooling", "At risk", "Churned"];
 const STAGE_COLORS = {
   Registered: "#8B93A3", New: "#6E9BF2", Casual: "#B073F0", Active: "#3ECB9E",
@@ -65,6 +74,8 @@ const CSV_COLUMNS = [
   { label: "last_login", value: p => p.last_login_at },
   { label: "days_since_login", value: p => p.days_since_login },
   { label: "login_recency", value: p => p.login_recency },
+  { label: "last_deposit", value: p => p.last_deposit_date },
+  { label: "days_since_deposit", value: p => daysSince(p.last_deposit_date) },
   { label: "engaged_not_depositing", value: p => (p.engaged_not_depositing ? "yes" : "no") },
 ];
 
@@ -199,6 +210,7 @@ export default function Segments({ s, lang }) {
   const th = { padding: "9px 12px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 11.5, whiteSpace: "nowrap" };
   const td = { padding: "8px 12px", fontSize: 12.5, whiteSpace: "nowrap" };
   const dateOf = v => (v ? String(v).slice(0, 10) : s.seg.never);
+  const depositAge = p => daysSince(p.last_deposit_date);
 
   function exportSegment() {
     const parts = [filters.stage, filters.tier, filters.sport, filters.login,
@@ -312,7 +324,8 @@ export default function Segments({ s, lang }) {
                   s.seg.cols.deposits, s.seg.cols.depositCount, s.seg.cols.ggr, s.seg.cols.bets,
                   s.seg.cols.stake, s.seg.cols.avgStake, s.seg.cols.topSport,
                   s.seg.cols.lastActivity, s.seg.cols.daysInactive,
-                  s.seg.cols.lastLogin, ""].map((h, i) => <th key={h || `act${i}`} style={th}>{h}</th>)}
+                  s.seg.cols.lastLogin, s.seg.cols.lastDeposit, s.seg.cols.daysSinceDeposit,
+                  ""].map((h, i) => <th key={h || `act${i}`} style={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -369,6 +382,19 @@ export default function Segments({ s, lang }) {
                         )}
                       </>
                     )}
+                  </td>
+                  <td style={{ ...td, color: C.inkDim }}>{dateOf(p.last_deposit_date)}</td>
+                  <td style={{
+                    ...td,
+                    // The number that decides whether someone is still paying.
+                    // Amber from a week, red from a month, matching the points
+                    // where the stage ladder would move them if it counted
+                    // deposits rather than any activity.
+                    color: depositAge(p) == null ? C.inkFaint
+                      : depositAge(p) >= 30 ? C.negative
+                      : depositAge(p) >= 8 ? "#D9A848" : C.inkDim,
+                  }}>
+                    {depositAge(p) == null ? "—" : s.seg.daysAgo.replace("{n}", String(depositAge(p)))}
                   </td>
                   <td style={{ ...td, width: "1%" }}>
                     {/* Removes the player from every figure on the dashboard,
