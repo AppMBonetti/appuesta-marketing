@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { HandCoins, Receipt, ShieldAlert, TrendingUp, UserCheck, UserPlus, Wallet } from "lucide-react";
 import { C } from "./lib/theme";
 import { STRINGS } from "./lib/i18n";
@@ -7,6 +7,8 @@ import { useAuth } from "./lib/AuthContext";
 import { supabase, supabaseConfigError } from "./lib/supabaseClient";
 import Login from "./pages/Login";
 import { KpiCard, Panel, Spinner, fmtDOP } from "./components/ui";
+import { useSortedRows } from "./lib/sortRows";
+import { SortHeader } from "./components/SortHeader";
 
 /**
  * What an affiliate sees at /portal: their own figures only. Every number comes
@@ -99,6 +101,35 @@ function monthLabel(key, lang) {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+// Commission is derived per row rather than stored, so each table sorts on the
+// same arithmetic its cells show.
+const PAYOUT_SORT_COLUMNS = [
+  { key: "date", kind: "date", label: t => t.payouts.date, value: p => p.paid_on },
+  { key: "amount", align: "right", label: t => t.payouts.amount, value: p => p.amount },
+];
+
+const MONTH_SORT_COLUMNS = (pct, cpa) => [
+  { key: "month", kind: "date", label: t => t.monthly.month, value: m => m.month },
+  { key: "registrations", align: "right", label: t => t.kpi.registrations, value: m => m.registrations },
+  { key: "ftds", align: "right", label: t => t.kpi.ftds, value: m => m.ftds },
+  { key: "conversion", align: "right", label: t => t.kpi.conversion,
+    value: m => (Number(m.registrations) > 0 ? Number(m.ftds) / Number(m.registrations) : null) },
+  { key: "deposits", align: "right", label: t => t.kpi.deposits, value: m => m.deposits },
+  { key: "ggr", align: "right", label: () => "GGR", value: m => m.ggr },
+  { key: "commission", align: "right", label: t => t.kpi.commission,
+    value: m => m.ggr * pct / 100 + m.ftds * cpa },
+];
+
+const PLAYER_SORT_COLUMNS = (pct) => [
+  { key: "ref", kind: "text", label: t => t.players.ref, value: p => p.player_ref },
+  { key: "registered", kind: "date", label: t => t.players.registered, value: p => p.registered_at },
+  { key: "ftd", kind: "date", label: t => t.players.ftd, value: p => p.first_deposit_date },
+  { key: "deposits", align: "right", label: t => t.kpi.deposits, value: p => p.deposit_amount },
+  { key: "ggr", align: "right", label: () => "GGR", value: p => p.ggr },
+  { key: "commission", align: "right", label: t => t.kpi.commission,
+    value: p => (Number(p.ggr) || 0) * pct / 100 },
+];
+
 function Portal({ s, t, lang, setLang, summary: a }) {
   const { signOut } = useAuth();
   const [players, setPlayers] = useState(null);
@@ -118,6 +149,16 @@ function Portal({ s, t, lang, setLang, summary: a }) {
   const deal = [pct > 0 && `${pct}% ${t.ofGgr}`, Number(a.cpa_amount) > 0 && `${fmtDOP(a.cpa_amount)} / FTD`].filter(Boolean).join(" + ");
   const row = { padding: "4px 28px 4px 0", color: C.inkDim };
   const months = players ? byMonth(players) : [];
+
+  const monthColumns = useMemo(
+    () => MONTH_SORT_COLUMNS(pct, Number(a.cpa_amount)), [pct, a.cpa_amount]);
+  const playerColumns = useMemo(() => PLAYER_SORT_COLUMNS(pct), [pct]);
+  const { sorted: payoutsSorted, sort: payoutSort, toggle: payoutToggle } =
+    useSortedRows(payouts, PAYOUT_SORT_COLUMNS);
+  const { sorted: monthsSorted, sort: monthSort, toggle: monthToggle } =
+    useSortedRows(months, monthColumns);
+  const { sorted: playersSorted, sort: playerSort, toggle: playerToggle } =
+    useSortedRows(players || [], playerColumns);
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", fontFamily: "'Inter', -apple-system, sans-serif", color: C.ink }}>
@@ -170,8 +211,11 @@ function Portal({ s, t, lang, setLang, summary: a }) {
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>{t.payouts.title}</div>
             {!payouts.length ? <div style={{ fontSize: 12.5, color: C.inkDim }}>{t.payouts.none}</div> : (
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr><th style={th}>{t.payouts.date}</th><th style={{ ...th, ...num }}>{t.payouts.amount}</th></tr></thead>
-                <tbody>{payouts.map((p, i) => (
+                <thead>
+                  <SortHeader columns={PAYOUT_SORT_COLUMNS} sort={payoutSort} toggle={payoutToggle}
+                    s={t} hint={s.sortHint} th={th} />
+                </thead>
+                <tbody>{payoutsSorted.map((p, i) => (
                   <tr key={i}><td style={td}>{fmtDate(`${p.paid_on}T12:00:00`, lang)}</td><td style={{ ...td, ...num }}>{fmtDOP(p.amount, { decimals: 2 })}</td></tr>
                 ))}</tbody>
               </table>
@@ -184,16 +228,11 @@ function Portal({ s, t, lang, setLang, summary: a }) {
             <div style={{ fontSize: 14, fontWeight: 600, padding: "14px 16px 6px" }}>{t.monthly.title}</div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr>
-                  <th style={th}>{t.monthly.month}</th>
-                  <th style={{ ...th, ...num }}>{t.kpi.registrations}</th>
-                  <th style={{ ...th, ...num }}>{t.kpi.ftds}</th>
-                  <th style={{ ...th, ...num }}>{t.kpi.conversion}</th>
-                  <th style={{ ...th, ...num }}>{t.kpi.deposits}</th>
-                  <th style={{ ...th, ...num }}>GGR</th>
-                  <th style={{ ...th, ...num }}>{t.kpi.commission}</th>
-                </tr></thead>
-                <tbody>{months.map(m => (
+                <thead>
+                  <SortHeader columns={monthColumns} sort={monthSort} toggle={monthToggle}
+                    s={t} hint={s.sortHint} th={th} />
+                </thead>
+                <tbody>{monthsSorted.map(m => (
                   <tr key={m.month}>
                     <td style={td}>{monthLabel(m.month, lang)}</td>
                     <td style={{ ...td, ...num }}>{fmtInt(m.registrations)}</td>
@@ -219,15 +258,11 @@ function Portal({ s, t, lang, setLang, summary: a }) {
           ) : (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr>
-                  <th style={th}>{t.players.ref}</th>
-                  <th style={th}>{t.players.registered}</th>
-                  <th style={th}>{t.players.ftd}</th>
-                  <th style={{ ...th, ...num }}>{t.kpi.deposits}</th>
-                  <th style={{ ...th, ...num }}>GGR</th>
-                  <th style={{ ...th, ...num }}>{t.kpi.commission}</th>
-                </tr></thead>
-                <tbody>{players.map((p, i) => (
+                <thead>
+                  <SortHeader columns={playerColumns} sort={playerSort} toggle={playerToggle}
+                    s={t} hint={s.sortHint} th={th} />
+                </thead>
+                <tbody>{playersSorted.map((p, i) => (
                   <tr key={i}>
                     <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{p.player_ref}</td>
                     <td style={td}>{fmtDate(p.registered_at, lang)}</td>

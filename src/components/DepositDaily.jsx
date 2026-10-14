@@ -1,5 +1,7 @@
 import { C } from "../lib/theme";
 import { Panel, SectionHeading, fmtDOP } from "./ui";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "./SortHeader";
 
 /**
  * Deposits per calendar day, and the attempts that never landed.
@@ -9,13 +11,33 @@ import { Panel, SectionHeading, fmtDOP } from "./ui";
  * reports only money that arrived. A rail failing most of the time is invisible
  * in it — which is how a 5% success rate went unnoticed.
  */
+const METHOD_SORT_COLUMNS = [
+  { key: "method", kind: "text", align: "left", label: s => s.dep.method, value: m => `${m.method} ${m.provider}` },
+  { key: "completed", label: s => s.dep.completed, value: m => m.completed },
+  { key: "failedCol", label: s => s.dep.failedCol, value: m => m.failed },
+  { key: "rate", label: s => s.dep.rate, value: m => m.success_pct },
+  { key: "landed", label: s => s.dep.landed, value: m => m.completed_amount },
+  { key: "lostCol", label: s => s.dep.lostCol, value: m => m.lost_amount },
+];
+
+const DAY_SORT_COLUMNS = [
+  { key: "day", kind: "date", align: "left", label: s => s.dep.day, value: d => d.day },
+  { key: "volume", label: s => s.dep.volume, value: d => d.deposit_amount },
+  { key: "count", label: s => s.dep.count, value: d => d.deposit_count },
+  { key: "depositors", label: s => s.dep.depositors, value: d => d.depositors },
+  { key: "avg", label: s => s.dep.avg, value: d => d.avg_deposit },
+];
+
 export default function DepositDaily({ s, lang, days, methods }) {
-  if (!days?.length && !methods?.length) return null;
+  const recent = [...(days || [])].sort((a, b) => b.day.localeCompare(a.day)).slice(0, 31);
+  const byMethod = [...(methods || [])].sort((a, b) => Number(b.attempts) - Number(a.attempts));
 
-  const recent = [...days].sort((a, b) => b.day.localeCompare(a.day)).slice(0, 31);
-  const byMethod = [...methods].sort((a, b) => Number(b.attempts) - Number(a.attempts));
+  const { sorted: methodSorted, sort: methodSort, toggle: methodToggle } =
+    useSortedRows(byMethod, METHOD_SORT_COLUMNS);
+  const { sorted: daySorted, sort: daySort, toggle: dayToggle } =
+    useSortedRows(recent, DAY_SORT_COLUMNS);
 
-  const totals = days.reduce((acc, d) => ({
+  const totals = (days || []).reduce((acc, d) => ({
     count: acc.count + Number(d.deposit_count || 0),
     amount: acc.amount + Number(d.deposit_amount || 0),
   }), { count: 0, amount: 0 });
@@ -31,6 +53,8 @@ export default function DepositDaily({ s, lang, days, methods }) {
   const th = { padding: "9px 12px", textAlign: "right", color: C.inkDim, fontWeight: 500, fontSize: 11.5, whiteSpace: "nowrap" };
   const td = { padding: "8px 12px", fontSize: 12.5, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
   const maxAmount = Math.max(...recent.map(d => Number(d.deposit_amount) || 0), 1);
+
+  if (!days?.length && !methods?.length) return null;
 
   return (
     <>
@@ -62,15 +86,11 @@ export default function DepositDaily({ s, lang, days, methods }) {
           <Panel style={{ padding: 4, overflow: "auto", marginBottom: 8 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr>
-                  <th style={{ ...th, textAlign: "left" }}>{s.dep.method}</th>
-                  {[s.dep.completed, s.dep.failedCol, s.dep.rate, s.dep.landed, s.dep.lostCol].map(h => (
-                    <th key={h} style={th}>{h}</th>
-                  ))}
-                </tr>
+                <SortHeader columns={METHOD_SORT_COLUMNS} sort={methodSort} toggle={methodToggle}
+                  s={s} th={th} />
               </thead>
               <tbody>
-                {byMethod.map(m => {
+                {methodSorted.map(m => {
                   const pct = m.success_pct == null ? null : Number(m.success_pct);
                   return (
                     <tr key={`${m.provider}-${m.method}`} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
@@ -101,16 +121,11 @@ export default function DepositDaily({ s, lang, days, methods }) {
           <Panel style={{ padding: 4, overflow: "auto", marginBottom: 24 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr>
-                  <th style={{ ...th, textAlign: "left" }}>{s.dep.day}</th>
-                  {[s.dep.volume, s.dep.count, s.dep.depositors, s.dep.avg].map(h => (
-                    <th key={h} style={th}>{h}</th>
-                  ))}
-                  <th style={{ ...th, textAlign: "left", width: "28%" }} />
-                </tr>
+                <SortHeader columns={DAY_SORT_COLUMNS} sort={daySort} toggle={dayToggle}
+                  s={s} th={th} trailing={1} trailingStyle={{ textAlign: "left", width: "28%" }} />
               </thead>
               <tbody>
-                {recent.map(d => {
+                {daySorted.map(d => {
                   const amount = Number(d.deposit_amount) || 0;
                   return (
                     <tr key={d.day} style={{ borderTop: `1px solid ${C.panelBorder}` }}>

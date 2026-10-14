@@ -11,10 +11,24 @@ import {
 } from "../lib/period";
 import { aggregateByChannel, pivotSessionsByDate, deriveWeeklyKpis } from "../lib/metrics";
 import { SectionHeading, Panel, PeriodBar, Spinner, KpiCard, fmtDOP, deltaOf, EmptyState } from "../components/ui";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "../components/SortHeader";
 import WeeklyKpiGrid from "../components/WeeklyKpiGrid";
 import GoalTracker from "../components/GoalTracker";
 
 const fmtPct = n => (n == null ? "—" : `${(n * 100).toFixed(1)}%`);
+
+// The channel rows carry their own colour and share, worked out while they are
+// still in the chart's order: sorting the table must not repaint the dots that
+// tie each row to its series above.
+const GA4_SORT_COLUMNS = [
+  { key: "channel", kind: "text", label: s => s.ga4Cols.channel, value: c => c.channel },
+  { key: "sessions", label: s => s.ga4Cols.sessions, value: c => c.sessions },
+  { key: "share", label: s => s.ga4Cols.share, value: c => c.share },
+  { key: "users", label: s => s.ga4Cols.users, value: c => c.active_users },
+  { key: "engagement", label: s => s.ga4Cols.engagement, value: c => c.engagement_rate },
+  { key: "delta", label: s => s.ga4Cols.delta, value: c => c.deltaPct },
+];
 
 export default function Acquisition({ s, lang }) {
   const [tab, setTab] = useState("weekly");
@@ -112,6 +126,19 @@ export default function Acquisition({ s, lang }) {
     ? ga4Current.reduce((sum, c) => sum + c.engagement_rate * c.sessions, 0) / totalSessions : null;
   const sessionsDelta = deltaOf(totalSessions, ga4Previous.reduce((sum, c) => sum + c.sessions, 0));
 
+  const ga4Table = ga4Current.map((c, i) => {
+    const previous = ga4Previous.find(p => p.channel === c.channel)?.sessions ?? 0;
+    return {
+      ...c,
+      color: LINE_COLORS[i % LINE_COLORS.length],
+      share: totalSessions > 0 ? (c.sessions / totalSessions) * 100 : 0,
+      delta: deltaOf(c.sessions, previous),
+      deltaPct: previous > 0 ? (c.sessions - previous) / previous : null,
+    };
+  });
+  const { sorted: ga4Sorted, sort: ga4Sort, toggle: ga4Toggle } =
+    useSortedRows(ga4Table, GA4_SORT_COLUMNS);
+
   const igTotals = social.reduce((acc, r) => ({
     reach: acc.reach + (r.reach || 0),
     views: acc.views + (r.profile_views || 0),
@@ -205,34 +232,35 @@ export default function Acquisition({ s, lang }) {
 
               <Panel style={{ padding: 4, overflow: "auto", marginBottom: 16 }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead><tr>{[s.ga4Cols.channel, s.ga4Cols.sessions, s.ga4Cols.share, s.ga4Cols.users, s.ga4Cols.engagement, s.ga4Cols.delta].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                  <thead>
+                    <SortHeader columns={GA4_SORT_COLUMNS} sort={ga4Sort} toggle={ga4Toggle}
+                      s={s} th={thStyle} />
+                  </thead>
                   <tbody>
-                    {ga4Current.map((c, i) => {
-                      const d = deltaOf(c.sessions, ga4Previous.find(p => p.channel === c.channel)?.sessions ?? 0);
-                      const share = totalSessions > 0 ? (c.sessions / totalSessions) * 100 : 0;
-                      return (
-                        <tr key={c.channel}>
-                          <td style={{ padding: "10px 16px" }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ width: 9, height: 9, borderRadius: 99, background: LINE_COLORS[i % LINE_COLORS.length] }} />
-                              {c.channel}
+                    {ga4Sorted.map(c => (
+                      <tr key={c.channel}>
+                        <td style={{ padding: "10px 16px" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ width: 9, height: 9, borderRadius: 99, background: c.color }} />
+                            {c.channel}
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 16px", fontWeight: 600 }}>{c.sessions.toLocaleString()}</td>
+                        <td style={{ padding: "10px 16px", color: C.inkDim, minWidth: 130 }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ flex: 1, background: "#1D222B", borderRadius: 6, height: 7, minWidth: 50 }}>
+                              <span style={{ display: "block", width: `${c.share}%`, height: "100%", borderRadius: 6, background: c.color }} />
                             </span>
-                          </td>
-                          <td style={{ padding: "10px 16px", fontWeight: 600 }}>{c.sessions.toLocaleString()}</td>
-                          <td style={{ padding: "10px 16px", color: C.inkDim, minWidth: 130 }}>
-                            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ flex: 1, background: "#1D222B", borderRadius: 6, height: 7, minWidth: 50 }}>
-                                <span style={{ display: "block", width: `${share}%`, height: "100%", borderRadius: 6, background: LINE_COLORS[i % LINE_COLORS.length] }} />
-                              </span>
-                              {share.toFixed(1)}%
-                            </span>
-                          </td>
-                          <td style={{ padding: "10px 16px", color: C.inkDim }}>{c.active_users.toLocaleString()}</td>
-                          <td style={{ padding: "10px 16px", color: C.inkDim }}>{fmtPct(c.engagement_rate)}</td>
-                          <td style={{ padding: "10px 16px", fontSize: 12, color: d ? (d.positive ? C.positive : C.negative) : C.inkFaint }}>{d?.label ?? "—"}</td>
-                        </tr>
-                      );
-                    })}
+                            {c.share.toFixed(1)}%
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 16px", color: C.inkDim }}>{c.active_users.toLocaleString()}</td>
+                        <td style={{ padding: "10px 16px", color: C.inkDim }}>{fmtPct(c.engagement_rate)}</td>
+                        <td style={{ padding: "10px 16px", fontSize: 12, color: c.delta ? (c.delta.positive ? C.positive : C.negative) : C.inkFaint }}>
+                          {c.delta?.label ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </Panel>

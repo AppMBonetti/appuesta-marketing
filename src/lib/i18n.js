@@ -1,6 +1,7 @@
 export const STRINGS = {
   es: {
     brand: "Appuesta",
+    sortHint: "Clic para ordenar por esta columna. Otro clic invierte el orden, y un tercero vuelve al orden original.",
     nav: { overview: "Resumen", acquisition: "Adquisición", funnel: "Depósitos", retention: "Retención y cohortes", vip: "Segmentos VIP", segments: "Segmentos", affiliates: "Dashboard de afiliados", optimization: "Optimización", imports: "Importar datos", settings: "Configuración" },
     period: { week: "Semana", month: "Mes", custom: "Personalizado", vsWeek: "vs. semana anterior", vsMonth: "vs. mes anterior" },
     overviewTitle: "Resumen",
@@ -357,6 +358,7 @@ export const STRINGS = {
   },
   en: {
     brand: "Appuesta",
+    sortHint: "Click to sort by this column. Click again to reverse it, and a third time to return to the original order.",
     nav: { overview: "Overview", acquisition: "Acquisition", funnel: "Deposits", retention: "Retention & Cohorts", vip: "VIP Segments", segments: "Segments", affiliates: "Affiliates dashboard", optimization: "Optimization", imports: "Data Import", settings: "Settings" },
     period: { week: "Week", month: "Month", custom: "Custom", vsWeek: "vs. previous week", vsMonth: "vs. previous month" },
     overviewTitle: "Overview",

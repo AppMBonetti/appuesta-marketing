@@ -1,6 +1,8 @@
 import { C } from "../lib/theme";
 import { Panel, SectionHeading, fmtDOP, EmptyState } from "./ui";
 import { weekRangeLabel, formatMonth } from "../lib/period";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "./SortHeader";
 
 /**
  * Deposit volume over time, week by week and month by month.
@@ -58,6 +60,27 @@ function Comparison({ title, subtitle, current, previous, s, partial }) {
   );
 }
 
+// Both tables sort on the values behind the cells rather than the formatted
+// text, so "volumen" orders by pesos and "periodo" stays chronological.
+const MONTH_SORT_COLUMNS = [
+  { key: "period", kind: "date", align: "left", label: s => s.dep.period, value: m => m.month_start },
+  { key: "volume", label: s => s.dep.volume, value: m => m.deposit_amount },
+  { key: "count", label: s => s.dep.count, value: m => m.deposit_count },
+  { key: "depositors", label: s => s.dep.depositors, value: m => m.depositors },
+  { key: "avg", label: s => s.dep.avg, value: m => m.avg_deposit },
+  { key: "payouts", label: s => s.dep.payouts, value: m => m.payout_amount },
+  { key: "net", label: s => s.dep.net, value: m => m.net_cash },
+];
+
+const WEEK_SORT_COLUMNS = [
+  { key: "period", kind: "date", align: "left", label: s => s.dep.period, value: w => w.week_start },
+  { key: "volume", label: s => s.dep.volume, value: w => w.deposit_amount },
+  { key: "count", label: s => s.dep.count, value: w => w.deposit_count },
+  { key: "depositors", label: s => s.dep.depositors, value: w => w.depositors },
+  { key: "avg", label: s => s.dep.avg, value: w => w.avg_deposit },
+  { key: "wowShort", label: s => s.dep.wowShort, value: w => w.change },
+];
+
 export default function DepositTrends({ s, lang, weeks, months }) {
   const wk = [...weeks].sort((a, b) => a.week_start.localeCompare(b.week_start));
   const mo = [...months].sort((a, b) => a.month_start.localeCompare(b.month_start));
@@ -73,10 +96,26 @@ export default function DepositTrends({ s, lang, weeks, months }) {
   const curMonth = mo.length ? toRow(mo[mo.length - 1]) : null;
   const prevMonth = mo.length > 1 ? toRow(mo[mo.length - 2]) : null;
 
-  if (!wk.length && !mo.length) return <EmptyState s={s} />;
+  const monthRows = [...mo].reverse();
+  const weekRows = [...wk].reverse().map((w, i, arr) => {
+    const prev = arr[i + 1];
+    const count = Number(w.deposit_count) || 0;
+    return {
+      ...w,
+      change: pctChange(Number(w.deposit_amount), prev ? Number(prev.deposit_amount) : null),
+      avg_deposit: count ? Number(w.deposit_amount) / count : null,
+    };
+  });
+
+  const { sorted: monthSorted, sort: monthSort, toggle: monthToggle } =
+    useSortedRows(monthRows, MONTH_SORT_COLUMNS);
+  const { sorted: weekSorted, sort: weekSort, toggle: weekToggle } =
+    useSortedRows(weekRows, WEEK_SORT_COLUMNS);
 
   const th = { padding: "9px 12px", textAlign: "right", color: C.inkDim, fontWeight: 500, fontSize: 11.5, whiteSpace: "nowrap" };
   const td = { padding: "8px 12px", fontSize: 12.5, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
+
+  if (!wk.length && !mo.length) return <EmptyState s={s} />;
 
   return (
     <>
@@ -106,15 +145,11 @@ export default function DepositTrends({ s, lang, weeks, months }) {
           <Panel style={{ padding: 4, overflow: "auto", marginBottom: 22 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr>
-                  <th style={{ ...th, textAlign: "left" }}>{s.dep.period}</th>
-                  {[s.dep.volume, s.dep.count, s.dep.depositors, s.dep.avg, s.dep.payouts, s.dep.net].map(h => (
-                    <th key={h} style={th}>{h}</th>
-                  ))}
-                </tr>
+                <SortHeader columns={MONTH_SORT_COLUMNS} sort={monthSort} toggle={monthToggle}
+                  s={s} th={th} />
               </thead>
               <tbody>
-                {[...mo].reverse().map(m => (
+                {monthSorted.map(m => (
                   <tr key={m.month_start} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
                     <td style={{ padding: "8px 12px", fontSize: 12.5 }}>
                       {formatMonth(m.month_start, lang)}
@@ -147,31 +182,20 @@ export default function DepositTrends({ s, lang, weeks, months }) {
           <Panel style={{ padding: 4, overflow: "auto", marginBottom: 22 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr>
-                  <th style={{ ...th, textAlign: "left" }}>{s.dep.period}</th>
-                  {[s.dep.volume, s.dep.count, s.dep.depositors, s.dep.avg, s.dep.wowShort].map(h => (
-                    <th key={h} style={th}>{h}</th>
-                  ))}
-                </tr>
+                <SortHeader columns={WEEK_SORT_COLUMNS} sort={weekSort} toggle={weekToggle}
+                  s={s} th={th} />
               </thead>
               <tbody>
-                {[...wk].reverse().map((w, i, arr) => {
-                  const prev = arr[i + 1];
-                  const change = pctChange(Number(w.deposit_amount), prev ? Number(prev.deposit_amount) : null);
-                  const count = Number(w.deposit_count) || 0;
-                  return (
-                    <tr key={w.week_start} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
-                      <td style={{ padding: "8px 12px", fontSize: 12.5 }}>{weekRangeLabel(w.week_start, lang)}</td>
-                      <td style={{ ...td, fontWeight: 500 }}>{fmtDOP(w.deposit_amount)}</td>
-                      <td style={{ ...td, color: C.inkDim }}>{count.toLocaleString()}</td>
-                      <td style={td}>{Number(w.depositors).toLocaleString()}</td>
-                      <td style={{ ...td, color: C.inkDim }}>
-                        {fmtDOP(count ? Number(w.deposit_amount) / count : null)}
-                      </td>
-                      <td style={td}><Delta change={change} /></td>
-                    </tr>
-                  );
-                })}
+                {weekSorted.map(w => (
+                  <tr key={w.week_start} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
+                    <td style={{ padding: "8px 12px", fontSize: 12.5 }}>{weekRangeLabel(w.week_start, lang)}</td>
+                    <td style={{ ...td, fontWeight: 500 }}>{fmtDOP(w.deposit_amount)}</td>
+                    <td style={{ ...td, color: C.inkDim }}>{(Number(w.deposit_count) || 0).toLocaleString()}</td>
+                    <td style={td}>{Number(w.depositors).toLocaleString()}</td>
+                    <td style={{ ...td, color: C.inkDim }}>{fmtDOP(w.avg_deposit)}</td>
+                    <td style={td}><Delta change={w.change} /></td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </Panel>

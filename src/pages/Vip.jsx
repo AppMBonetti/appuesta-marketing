@@ -4,6 +4,8 @@ import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
 import { downloadCsv } from "../lib/csv";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "../components/SortHeader";
 
 const TIER_COLORS = ["#8B93A3", "#B0555F", "#C9424F", "#E4022B", "#F03A57", "#F97A8F"];
 
@@ -76,6 +78,72 @@ function ProgressToNext({ player, color, s }) {
           : <>{pct}% · <strong style={{ color: C.ink }}>{fmtDOP(player.wager_to_next)}</strong> {s.tierDrill.toNext} {player.next_tier}</>}
       </div>
     </div>
+  );
+}
+
+// The drill-down under an open tier. Its own component because each tier keeps
+// its own column sort, and a hook cannot live inside the .map over tiers.
+const TIER_SORT_COLUMNS = [
+  { key: "player", kind: "text", label: s => s.tierDrill.cols.player, value: p => p.name || p.id },
+  { key: "playerId", kind: "text", label: s => s.tierDrill.cols.playerId, value: p => p.id },
+  { key: "deposits", label: s => s.tierDrill.cols.deposits, value: p => p.total_deposit_amount },
+  { key: "count", label: s => s.tierDrill.cols.count, value: p => p.total_deposit_count },
+  { key: "lastDeposit", kind: "date", label: s => s.tierDrill.cols.lastDeposit, value: p => p.last_deposit_date },
+  { key: "lastLogin", kind: "date", label: s => s.tierDrill.cols.lastLogin, value: p => p.last_login_at },
+  { key: "ggr", label: s => s.tierDrill.cols.ggr, value: p => p.total_ggr_sportsbook },
+  { key: "bets", label: s => s.tierDrill.cols.bets, value: p => p.bets },
+  { key: "avgBet", label: s => s.tierDrill.cols.avgBet, value: p => p.avg_stake },
+  { key: "topSport", kind: "text", label: s => s.tierDrill.cols.topSport, value: p => p.top_sport },
+  { key: "wagered", label: s => s.tierDrill.cols.wagered, value: p => p.trailing_wager },
+  { key: "progress", label: s => s.tierDrill.cols.progress, value: p => p.progress_to_next },
+];
+
+function TierPlayers({ players, tier, s, lang, thStyle, tdStyle }) {
+  const { sorted, sort, toggle } = useSortedRows(players, TIER_SORT_COLUMNS);
+  return (
+    <>
+    <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 12px 4px" }}>
+      <button
+        onClick={() => exportPlayers(sorted, tier.tier_name)}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12, cursor: "pointer" }}
+      >
+        <Download size={12} /> {s.tierDrill.exportTier} ({sorted.length})
+      </button>
+    </div>
+    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <thead>
+        <SortHeader columns={TIER_SORT_COLUMNS} sort={sort} toggle={toggle} s={s} th={thStyle} />
+      </thead>
+      <tbody>
+        {sorted.map(p => (
+          <tr key={p.id}>
+            <td style={{ ...tdStyle, fontWeight: 500 }}>{p.name || p.id}</td>
+            <td style={{ ...tdStyle, color: C.inkFaint, fontFamily: "monospace", fontSize: 11.5 }}>{p.id}</td>
+            <td style={tdStyle}>{fmtDOP(p.total_deposit_amount)}</td>
+            <td style={{ ...tdStyle, color: C.inkDim }}>{p.total_deposit_count ?? 0}</td>
+            <td style={{ ...tdStyle, color: C.inkDim }}>{fmtDate(p.last_deposit_date, s, lang)}</td>
+            {/* A quiet depositor who still logs in is a different problem from
+                one who has gone. */}
+            <td style={{ ...tdStyle, color: p.days_since_login != null && p.days_since_login <= 7 ? C.positive : C.inkDim }}>
+              {fmtDate(p.last_login_at, s, lang)}
+            </td>
+            <td style={tdStyle}>{fmtDOP(p.total_ggr_sportsbook)}</td>
+            <td style={{ ...tdStyle, color: C.inkDim }}>{Number(p.bets) || 0}</td>
+            <td style={tdStyle}>{p.avg_stake == null ? "—" : fmtDOP(p.avg_stake)}</td>
+            <td style={{ ...tdStyle, color: C.inkDim }}>
+              {p.top_sport
+                ? <>{p.top_sport}{p.top_sport_share == null ? "" : ` · ${Math.round(Number(p.top_sport_share))}%`}</>
+                : "—"}
+            </td>
+            <td style={tdStyle}>{fmtDOP(p.trailing_wager)}</td>
+            <td style={{ ...tdStyle, width: "1%" }}>
+              <ProgressToNext player={p} color={tier.color} s={s} />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    </>
   );
 }
 
@@ -184,55 +252,8 @@ export default function Vip({ s, lang }) {
                         {tierPlayers.length === 0 ? (
                           <div style={{ padding: "20px 16px", fontSize: 12.5, color: C.inkDim }}>{s.tierDrill.noPlayers}</div>
                         ) : (
-                          <>
-                          <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 12px 4px" }}>
-                            <button
-                              onClick={() => exportPlayers(tierPlayers, t.tier_name)}
-                              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12, cursor: "pointer" }}
-                            >
-                              <Download size={12} /> {s.tierDrill.exportTier} ({tierPlayers.length})
-                            </button>
-                          </div>
-                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                            <thead>
-                              <tr>
-                                {[s.tierDrill.cols.player, s.tierDrill.cols.playerId, s.tierDrill.cols.deposits,
-                                  s.tierDrill.cols.count, s.tierDrill.cols.lastDeposit,
-                                  s.tierDrill.cols.lastLogin, s.tierDrill.cols.ggr,
-                                  s.tierDrill.cols.bets, s.tierDrill.cols.avgBet, s.tierDrill.cols.topSport,
-                                  s.tierDrill.cols.wagered, s.tierDrill.cols.progress].map(h => <th key={h} style={thStyle}>{h}</th>)}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {tierPlayers.map(p => (
-                                <tr key={p.id}>
-                                  <td style={{ ...tdStyle, fontWeight: 500 }}>{p.name || p.id}</td>
-                                  <td style={{ ...tdStyle, color: C.inkFaint, fontFamily: "monospace", fontSize: 11.5 }}>{p.id}</td>
-                                  <td style={tdStyle}>{fmtDOP(p.total_deposit_amount)}</td>
-                                  <td style={{ ...tdStyle, color: C.inkDim }}>{p.total_deposit_count ?? 0}</td>
-                                  <td style={{ ...tdStyle, color: C.inkDim }}>{fmtDate(p.last_deposit_date, s, lang)}</td>
-                                  {/* A quiet depositor who still logs in is a
-                                      different problem from one who has gone. */}
-                                  <td style={{ ...tdStyle, color: p.days_since_login != null && p.days_since_login <= 7 ? C.positive : C.inkDim }}>
-                                    {fmtDate(p.last_login_at, s, lang)}
-                                  </td>
-                                  <td style={tdStyle}>{fmtDOP(p.total_ggr_sportsbook)}</td>
-                                  <td style={{ ...tdStyle, color: C.inkDim }}>{Number(p.bets) || 0}</td>
-                                  <td style={tdStyle}>{p.avg_stake == null ? "—" : fmtDOP(p.avg_stake)}</td>
-                                  <td style={{ ...tdStyle, color: C.inkDim }}>
-                                    {p.top_sport
-                                      ? <>{p.top_sport}{p.top_sport_share == null ? "" : ` · ${Math.round(Number(p.top_sport_share))}%`}</>
-                                      : "—"}
-                                  </td>
-                                  <td style={tdStyle}>{fmtDOP(p.trailing_wager)}</td>
-                                  <td style={{ ...tdStyle, width: "1%" }}>
-                                    <ProgressToNext player={p} color={t.color} s={s} />
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          </>
+                          <TierPlayers players={tierPlayers} tier={t} s={s} lang={lang}
+                            thStyle={thStyle} tdStyle={tdStyle} />
                         )}
                       </div>
                     )}

@@ -3,6 +3,8 @@ import { AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { SectionHeading, Panel, Spinner, fmtDOP } from "./ui";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "./SortHeader";
 
 /**
  * Altenar exports are bounded by whatever date range the person running them
@@ -13,6 +15,16 @@ import { SectionHeading, Panel, Spinner, fmtDOP } from "./ui";
  * Futures stay Open for months by design, so only bets whose event has already
  * been played count as a missing settlement.
  */
+// Sorting by stake or potential payout is how you find the settlement worth
+// chasing first, which is the point of this list.
+const STALE_SORT_COLUMNS = [
+  { key: "player", kind: "text", label: s => s.playerCol, value: b => b.player_username || b.external_user_id },
+  { key: "day", kind: "date", label: s => s.coverage.dayCol, value: b => b.event_date || b.bet_date },
+  { key: "stake", label: s => s.coverage.stakeCol, value: b => b.stake },
+  { key: "potential", label: s => s.coverage.potentialCol, value: b => b.potential_payout },
+  { key: "daysOpen", label: s => s.coverage.openDays, value: b => b.days_since_event },
+];
+
 export default function DataCoverage({ s, lang }) {
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState([]);
@@ -32,6 +44,9 @@ export default function DataCoverage({ s, lang }) {
     })();
     return () => { active = false; };
   }, []);
+
+  const { sorted: staleSorted, sort: staleSort, toggle: staleToggle } =
+    useSortedRows(stale, STALE_SORT_COLUMNS);
 
   if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 30 }}><Spinner size={20} /></div>;
 
@@ -74,14 +89,11 @@ export default function DataCoverage({ s, lang }) {
           </div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
             <thead>
-              <tr>
-                {[s.playerCol, s.coverage.dayCol, s.coverage.stakeCol, s.coverage.potentialCol, ""].map((h, i) => (
-                  <th key={i} style={{ padding: "8px 12px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 11.5 }}>{h}</th>
-                ))}
-              </tr>
+              <SortHeader columns={STALE_SORT_COLUMNS} sort={staleSort} toggle={staleToggle} s={s}
+                th={{ padding: "8px 12px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 11.5 }} />
             </thead>
             <tbody>
-              {stale.map(b => (
+              {staleSorted.map(b => (
                 <tr key={b.bet_id}>
                   <td style={{ padding: "7px 12px" }}>{b.player_username || b.external_user_id || "—"}</td>
                   <td style={{ padding: "7px 12px", color: C.inkDim }}>{String(b.event_date || b.bet_date).slice(0, 10)}</td>
