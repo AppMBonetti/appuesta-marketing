@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 /**
- * Click-to-sort for the player tables.
+ * Click-to-sort for the dashboard's tables.
  *
  * Every table here mixes numbers, money, dates, text and nulls in one row, and
  * each needs different handling: money and counts sort numerically, dates
@@ -13,28 +13,50 @@ import { useMemo, useState } from "react";
  */
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
-function compare(a, b, kind) {
-  const aMissing = a == null || a === "";
-  const bMissing = b == null || b === "";
-  if (aMissing && bMissing) return 0;
-  if (aMissing) return 1;   // nulls last, whichever way the column is pointing
-  if (bMissing) return -1;
+function isMissing(value) {
+  return value == null || value === "";
+}
 
+/** Compares two present values; the caller handles missing ones and direction. */
+function comparePresent(a, b, kind) {
   if (kind === "text") return collator.compare(String(a), String(b));
   if (kind === "date") {
     const at = new Date(a).getTime();
     const bt = new Date(b).getTime();
-    if (Number.isNaN(at) && Number.isNaN(bt)) return 0;
-    if (Number.isNaN(at)) return 1;
-    if (Number.isNaN(bt)) return -1;
+    if (Number.isNaN(at) || Number.isNaN(bt)) {
+      return Number.isNaN(at) === Number.isNaN(bt) ? 0 : Number.isNaN(at) ? 1 : -1;
+    }
     return at - bt;
   }
   const an = Number(a);
   const bn = Number(b);
-  if (Number.isNaN(an) && Number.isNaN(bn)) return 0;
-  if (Number.isNaN(an)) return 1;
-  if (Number.isNaN(bn)) return -1;
+  if (Number.isNaN(an) || Number.isNaN(bn)) {
+    return Number.isNaN(an) === Number.isNaN(bn) ? 0 : Number.isNaN(an) ? 1 : -1;
+  }
   return an - bn;
+}
+
+/**
+ * Orders a copy of `rows` by one column.
+ *
+ * Missing values are placed last before the direction is applied, not after:
+ * negating the whole comparison would float every blank to the top as soon as
+ * the column was flipped to descending.
+ */
+export function orderBy(rows, column, dir) {
+  const kind = column.kind === "text" ? "text" : column.kind === "date" ? "date" : "number";
+  const factor = dir === "asc" ? 1 : -1;
+  return [...rows].sort((x, y) => {
+    const a = column.value(x);
+    const b = column.value(y);
+    const aMissing = isMissing(a);
+    const bMissing = isMissing(b);
+    if (aMissing || bMissing) {
+      if (aMissing && bMissing) return 0;
+      return aMissing ? 1 : -1;
+    }
+    return factor * comparePresent(a, b, kind);
+  });
 }
 
 /**
@@ -55,10 +77,7 @@ export function useSortedRows(rows, columns, initial = null) {
     if (!sort?.key) return rows;
     const column = byKey[sort.key];
     if (!column) return rows;
-    const kind = column.kind === "text" ? "text" : column.kind === "date" ? "date" : "number";
-    const factor = sort.dir === "asc" ? 1 : -1;
-    // Sorting a copy: the caller's array is state elsewhere.
-    return [...rows].sort((x, y) => factor * compare(column.value(x), column.value(y), kind));
+    return orderBy(rows, column, sort.dir);
   }, [rows, sort, byKey]);
 
   /**

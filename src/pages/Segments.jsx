@@ -3,7 +3,8 @@ import { Download, Search, X, UserMinus, ShieldAlert, RotateCcw } from "lucide-r
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { downloadCsv } from "../lib/csv";
-import { useSortedRows, sortIndicator } from "../lib/sortRows";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "../components/SortHeader";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
 
 // Ordered by where a player sits in the funnel, not alphabetically, so the
@@ -11,21 +12,21 @@ import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../component
 // Which header sorts on what. Keys line up with the header row below; a column
 // with no key (the action button) is not sortable.
 const SORT_COLUMNS = [
-  { key: "id", kind: "text", value: p => p.id },
-  { key: "player", kind: "text", value: p => p.name || p.username || p.email },
-  { key: "lifecycle", kind: "text", value: p => p.lifecycle },
-  { key: "tier", kind: "text", value: p => p.vip_tier },
-  { key: "deposits", value: p => p.deposits },
-  { key: "depositCount", value: p => p.deposit_count },
-  { key: "ggr", value: p => p.ggr },
-  { key: "bets", value: p => p.bets },
-  { key: "stake", value: p => p.total_stake },
-  { key: "avgStake", value: p => p.avg_stake },
-  { key: "topSport", kind: "text", value: p => p.top_sport },
-  { key: "lastLogin", kind: "date", value: p => p.last_login_at },
-  { key: "lastBet", kind: "date", value: p => p.last_bet_date },
-  { key: "lastDeposit", kind: "date", value: p => p.last_deposit_date },
-  { key: "daysSinceDeposit", value: p => p.days_since_deposit },
+  { key: "id", kind: "text", label: s => s.seg.cols.id, value: p => p.id },
+  { key: "player", kind: "text", label: s => s.seg.cols.player, value: p => p.name || p.username || p.email },
+  { key: "lifecycle", kind: "text", label: s => s.seg.cols.lifecycle, value: p => p.lifecycle },
+  { key: "tier", kind: "text", label: s => s.seg.cols.tier, value: p => p.vip_tier },
+  { key: "deposits", label: s => s.seg.cols.deposits, value: p => p.deposits },
+  { key: "depositCount", label: s => s.seg.cols.depositCount, value: p => p.deposit_count },
+  { key: "ggr", label: s => s.seg.cols.ggr, value: p => p.ggr },
+  { key: "bets", label: s => s.seg.cols.bets, value: p => p.bets },
+  { key: "stake", label: s => s.seg.cols.stake, value: p => p.total_stake },
+  { key: "avgStake", label: s => s.seg.cols.avgStake, value: p => p.avg_stake },
+  { key: "topSport", kind: "text", label: s => s.seg.cols.topSport, value: p => p.top_sport },
+  { key: "lastLogin", kind: "date", label: s => s.seg.cols.lastLogin, value: p => p.last_login_at },
+  { key: "lastBet", kind: "date", label: s => s.seg.cols.lastBet, value: p => p.last_bet_date },
+  { key: "lastDeposit", kind: "date", label: s => s.seg.cols.lastDeposit, value: p => p.last_deposit_date },
+  { key: "daysSinceDeposit", label: s => s.seg.cols.daysSinceDeposit, value: p => p.days_since_deposit },
 ];
 
 const WATCH_SORT_COLUMNS = [
@@ -348,29 +349,8 @@ export default function Segments({ s, lang }) {
         <Panel style={{ padding: 4, overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr>
-                {SORT_COLUMNS.map(col => (
-                  <th key={col.key} style={{ ...th, padding: 0 }}>
-                    <button
-                      onClick={() => toggle(col.key)}
-                      title={s.seg.sortHint}
-                      style={{
-                        all: "unset", cursor: "pointer", display: "flex", alignItems: "center",
-                        gap: 4, padding: "9px 12px", width: "100%", boxSizing: "border-box",
-                        whiteSpace: "nowrap",
-                        color: sort?.key === col.key ? C.ink : C.inkDim,
-                        fontWeight: sort?.key === col.key ? 600 : 500,
-                      }}
-                    >
-                      {s.seg.cols[col.key]}
-                      <span style={{ color: sort?.key === col.key ? C.accent : C.inkFaint, fontSize: 10 }}>
-                        {sortIndicator(sort, col.key)}
-                      </span>
-                    </button>
-                  </th>
-                ))}
-                <th style={th} />
-              </tr>
+              <SortHeader columns={SORT_COLUMNS} sort={sort} toggle={toggle}
+                s={s} th={th} trailing={1} />
             </thead>
             <tbody>
               {sorted.map(p => (
@@ -524,29 +504,8 @@ export default function Segments({ s, lang }) {
             <Panel style={{ padding: 4, overflow: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr>
-                    {WATCH_SORT_COLUMNS.map(col => (
-                      <th key={col.key} style={{ ...th, padding: 0 }}>
-                        <button
-                          onClick={() => watchToggle(col.key)}
-                          title={s.seg.sortHint}
-                          style={{
-                            all: "unset", cursor: "pointer", display: "flex", alignItems: "center",
-                            gap: 4, padding: "9px 12px", width: "100%", boxSizing: "border-box",
-                            whiteSpace: "nowrap",
-                            color: watchSort?.key === col.key ? C.ink : C.inkDim,
-                            fontWeight: watchSort?.key === col.key ? 600 : 500,
-                          }}
-                        >
-                          {col.label(s)}
-                          <span style={{ color: watchSort?.key === col.key ? C.accent : C.inkFaint, fontSize: 10 }}>
-                            {sortIndicator(watchSort, col.key)}
-                          </span>
-                        </button>
-                      </th>
-                    ))}
-                    <th style={th} />
-                  </tr>
+                  <SortHeader columns={WATCH_SORT_COLUMNS} sort={watchSort} toggle={watchToggle}
+                    s={s} th={th} trailing={1} />
                 </thead>
                 <tbody>
                   {watchSorted.map(w => (

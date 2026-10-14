@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, Download, HandCoins, Handshake, Pencil, Plus, Receipt, Trash2,
   TrendingUp, UploadCloud, UserCheck, UserPlus, Wallet, X,
@@ -7,6 +7,8 @@ import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { KpiCard, Panel, SectionHeading, Spinner, fmtDOP } from "../components/ui";
 import { downloadCsv } from "../lib/csv";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "../components/SortHeader";
 import { parseAffiliateReportFile } from "../lib/importers/affiliateReport";
 import { upsertInChunks } from "../lib/importers/parseWorkbook";
 import { AFF_STRINGS } from "../lib/i18nAffiliates";
@@ -263,12 +265,20 @@ function UploadPanel({ t, affiliate, onImported }) {
   );
 }
 
+const PAYOUT_SORT_COLUMNS = [
+  { key: "date", kind: "date", label: t => t.payouts.date, value: p => p.paid_on },
+  { key: "amount", align: "right", label: t => t.payouts.amount, value: p => p.amount },
+  { key: "note", kind: "text", label: t => t.payouts.note, value: p => p.note },
+];
+
 function PayoutsPanel({ t, lang, affiliate, payouts, onChanged }) {
   const [amount, setAmount] = useState("");
   const [paidOn, setPaidOn] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const { sorted: payoutsSorted, sort: payoutSort, toggle: payoutToggle } =
+    useSortedRows(payouts, PAYOUT_SORT_COLUMNS);
 
   async function add() {
     const value = Number(amount);
@@ -305,14 +315,12 @@ function PayoutsPanel({ t, lang, affiliate, payouts, onChanged }) {
       {error && <div style={{ color: C.negative, fontSize: 12.5, marginTop: 10 }}>{error}</div>}
       {payouts.length > 0 && (
         <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 14 }}>
-          <thead><tr>
-            <th style={thStyle}>{t.payouts.date}</th>
-            <th style={{ ...thStyle, ...num }}>{t.payouts.amount}</th>
-            <th style={thStyle}>{t.payouts.note}</th>
-            <th style={thStyle} />
-          </tr></thead>
+          <thead>
+            <SortHeader columns={PAYOUT_SORT_COLUMNS} sort={payoutSort} toggle={payoutToggle}
+              s={t} th={thStyle} trailing={1} />
+          </thead>
           <tbody>
-            {payouts.map(p => (
+            {payoutsSorted.map(p => (
               <tr key={p.id}>
                 <td style={tdStyle}>{fmtDate(`${p.paid_on}T12:00:00`, lang)}</td>
                 <td style={{ ...tdStyle, ...num }}>{fmtDOP(p.amount, { decimals: 2 })}</td>
@@ -412,6 +420,19 @@ function PortalAccessPanel({ t, affiliate }) {
   );
 }
 
+// Commission is the GGR share, so it sorts on the same number the cell shows
+// rather than on the formatted string.
+const PLAYER_SORT_COLUMNS = (commissionPct) => [
+  { key: "player", kind: "text", label: t => t.players.player, value: p => p.username },
+  { key: "registered", kind: "date", label: t => t.players.registered, value: p => p.registered_at },
+  { key: "ftd", kind: "date", label: t => t.players.ftd, value: p => p.first_deposit_date },
+  { key: "deposits", align: "right", label: t => t.kpi.deposits, value: p => p.deposit_amount },
+  { key: "ggr", align: "right", label: () => "GGR", value: p => p.ggr },
+  { key: "commission", align: "right", label: t => t.kpi.commission,
+    value: p => (p.is_flagged ? null : (Number(p.ggr) || 0) * Number(commissionPct) / 100) },
+  { key: "lastLogin", kind: "date", label: t => t.players.lastLogin, value: p => p.last_login_at },
+];
+
 function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
   const [players, setPlayers] = useState(null);
   const [payouts, setPayouts] = useState([]);
@@ -458,6 +479,10 @@ function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
   const needle = search.trim().toLowerCase();
   const visible = (players || []).filter(p => !needle ||
     String(p.username || "").toLowerCase().includes(needle));
+  const playerColumns = useMemo(
+    () => PLAYER_SORT_COLUMNS(affiliate.commission_pct), [affiliate.commission_pct]);
+  const { sorted: visibleSorted, sort: playerSort, toggle: playerToggle } =
+    useSortedRows(visible, playerColumns);
 
   return (
     <>
@@ -501,7 +526,7 @@ function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
           <div style={{ display: "flex", gap: 8 }}>
             <input type="search" style={inputStyle} placeholder={t.players.search} value={search} onChange={e => setSearch(e.target.value)} />
             <button style={btn(false)} disabled={!visible.length}
-              onClick={() => downloadCsv(`appuesta-afiliado-${affiliate.code.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`, PLAYER_CSV, visible)}>
+              onClick={() => downloadCsv(`appuesta-afiliado-${affiliate.code.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`, PLAYER_CSV, visibleSorted)}>
               <Download size={13} /> CSV
             </button>
             <button style={{ ...btn(false), color: C.negative }} disabled={!players?.length} onClick={clearAll}>
@@ -515,18 +540,12 @@ function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr>
-                <th style={thStyle}>{t.players.player}</th>
-                <th style={thStyle}>{t.players.registered}</th>
-                <th style={thStyle}>{t.players.ftd}</th>
-                <th style={{ ...thStyle, ...num }}>{t.kpi.deposits}</th>
-                <th style={{ ...thStyle, ...num }}>GGR</th>
-                <th style={{ ...thStyle, ...num }}>{t.kpi.commission}</th>
-                <th style={thStyle}>{t.players.lastLogin}</th>
-                <th style={thStyle} />
-              </tr></thead>
+              <thead>
+                <SortHeader columns={playerColumns} sort={playerSort} toggle={playerToggle}
+                  s={t} th={thStyle} trailing={1} />
+              </thead>
               <tbody>
-                {visible.map(p => {
+                {visibleSorted.map(p => {
                   const deposited = Number(p.deposit_amount) > 0 || Number(p.deposit_count) > 0 || p.first_deposit_date;
                   return (
                     <tr key={p.player_id} style={{ opacity: p.is_flagged ? 0.5 : 1 }}>
@@ -561,6 +580,21 @@ function AffiliateDetail({ t, lang, affiliate, onBack, onReload }) {
   );
 }
 
+const AFFILIATE_SORT_COLUMNS = [
+  { key: "affiliate", kind: "text", label: t => t.table.affiliate, value: r => r.name },
+  { key: "deal", kind: "text", label: t => t.deal, value: r => r.commission_pct },
+  { key: "registrations", align: "right", label: t => t.kpi.registrations, value: r => r.registrations },
+  { key: "ftds", align: "right", label: t => t.kpi.ftds, value: r => r.ftds },
+  { key: "conversion", align: "right", label: t => t.kpi.conversion,
+    value: r => (Number(r.registrations) > 0 ? Number(r.ftds) / Number(r.registrations) : null) },
+  { key: "deposits", align: "right", label: t => t.kpi.deposits, value: r => r.deposit_amount },
+  { key: "ggr", align: "right", label: () => "GGR", value: r => r.ggr },
+  { key: "commission", align: "right", label: t => t.kpi.commission, value: r => r.commission },
+  { key: "paid", align: "right", label: t => t.kpi.paid, value: r => r.paid },
+  { key: "balance", align: "right", label: t => t.kpi.balance, value: r => r.balance },
+  { key: "lastUpload", kind: "date", label: t => t.table.lastUpload, value: r => r.last_upload },
+];
+
 export default function Affiliates({ lang }) {
   const t = AFF_STRINGS[lang];
   const [rows, setRows] = useState(null);
@@ -581,6 +615,10 @@ export default function Affiliates({ lang }) {
 
   const reload = () => setVersion(v => v + 1);
   const current = selected && rows?.find(r => r.code === selected);
+
+  // Above the guards below, because a hook has to run on every render.
+  const { sorted: affSorted, sort: affSort, toggle: affToggle } =
+    useSortedRows(rows || [], AFFILIATE_SORT_COLUMNS);
 
   if (error) return <Panel style={{ color: C.negative }}>{error}</Panel>;
   if (!rows) return <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spinner size={22} /></div>;
@@ -606,21 +644,12 @@ export default function Affiliates({ lang }) {
           <Panel style={{ padding: 0, overflow: "hidden" }}>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr>
-                  <th style={thStyle}>{t.table.affiliate}</th>
-                  <th style={thStyle}>{t.deal}</th>
-                  <th style={{ ...thStyle, ...num }}>{t.kpi.registrations}</th>
-                  <th style={{ ...thStyle, ...num }}>{t.kpi.ftds}</th>
-                  <th style={{ ...thStyle, ...num }}>{t.kpi.conversion}</th>
-                  <th style={{ ...thStyle, ...num }}>{t.kpi.deposits}</th>
-                  <th style={{ ...thStyle, ...num }}>GGR</th>
-                  <th style={{ ...thStyle, ...num }}>{t.kpi.commission}</th>
-                  <th style={{ ...thStyle, ...num }}>{t.kpi.paid}</th>
-                  <th style={{ ...thStyle, ...num }}>{t.kpi.balance}</th>
-                  <th style={thStyle}>{t.table.lastUpload}</th>
-                </tr></thead>
+                <thead>
+                  <SortHeader columns={AFFILIATE_SORT_COLUMNS} sort={affSort} toggle={affToggle}
+                    s={t} th={thStyle} />
+                </thead>
                 <tbody>
-                  {rows.map(r => (
+                  {affSorted.map(r => (
                     <tr key={r.code} onClick={() => setSelected(r.code)} style={{ cursor: "pointer", opacity: r.active ? 1 : 0.5 }}>
                       <td style={tdStyle}>
                         <div style={{ color: C.ink, fontWeight: 600 }}>{r.name}</div>
