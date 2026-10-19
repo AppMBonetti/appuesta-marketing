@@ -1,3 +1,15 @@
+-- APPLIED 2026-10-19. All 28 policies are on the wrapped form; access verified
+-- unchanged afterwards (team member sees 1,458 / 2 / 33,522 / 3,714 / 9 across
+-- deposit_periods, team_members, bets, players, sport_aliases; an authenticated
+-- non-team user sees 0 in every one). Measured after applying: weekly_kpis
+-- 1,943-3,053 ms against a 5,340 ms baseline, player_lifecycle 641 ms against
+-- 2,934 ms.
+--
+-- It went in as five small batches rather than one statement: the ACCESS
+-- EXCLUSIVE lock wait on bets kept exceeding the 60s tool limit. Each batch was
+-- its own transaction, which is safe here because both forms of the qual grant
+-- identical access, so a partial state can only be slow, never wrong.
+--
 -- Evaluate the RLS check once per query instead of once per row.
 --
 -- Every table here is gated by `using (is_team_member())`. That function is

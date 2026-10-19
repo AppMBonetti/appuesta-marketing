@@ -61,3 +61,54 @@ Consequences to remember:
 
 Before pushing anything that touches these views, time it:
 `explain (analyze, timing) select count(*) from (select * from <view>) x;`
+
+Two traps in that measurement itself:
+
+- **Measure as `authenticated`, not as yourself.** Your connection bypasses RLS;
+  the dashboard does not. Wrap the measurement so it matches what the app does:
+  ```sql
+  begin;
+  set local role authenticated;
+  set local request.jwt.claims = '{"email":"<a team email>","role":"authenticated"}';
+  explain (analyze, timing off) select count(*) from <view>;
+  rollback;
+  ```
+- **`count(*)` lets the planner skip columns it does not need**, including whole
+  CTEs. `player_lifecycle` measured 231 ms that way and 2,934 ms once the query
+  named `top_sport`, because the sport-legs CTE showed `never executed`. Name
+  the expensive columns: `select count(*), count(top_sport) from <view>`.
+
+## RLS — the same inlining trap, one level down
+
+`is_team_member()` is `STABLE SECURITY DEFINER` with a `SET` clause, so it has
+the same problem `local_day()` had: PostgreSQL will not inline it. Written bare
+in a policy qual it is evaluated **once per row**, and each call queries
+`team_members`.
+
+Every policy is therefore written as `using ((select public.is_team_member()))`.
+The scalar subquery makes the planner hoist it into an `InitPlan`, evaluated
+once per statement. Measured as `authenticated`:
+
+| | before | after |
+|---|---|---|
+| `weekly_kpis` | 5,340 ms | 1,943–3,053 ms |
+| `player_lifecycle` | 2,934 ms | 641 ms |
+
+RLS also distorts plan *shape*, not just per-row cost: the `bets` scan was a
+Nested Loop of 3,470 iterations and went back to a Hash Join once the qual
+stopped being opaque.
+
+- **Keep the `(select ...)` wrapper on every new policy.** Supabase's linter does
+  not catch a bare call through a wrapper function like this one, so nothing
+  will warn you.
+- Hoisting is only safe because `is_team_member()` takes no arguments and reads
+  only the JWT, so its value cannot vary between rows. A policy that depends on
+  the row (`is_owner(t.user_id)`) must **not** be wrapped this way.
+- `ALTER POLICY` takes `ACCESS EXCLUSIVE`, and new queries queue behind it while
+  it waits. Set `lock_timeout` and run it when the dashboard is idle — four
+  attempts were killed by this lock wait. Apply in small batches if needed; a
+  partial state is safe, since both forms grant identical access.
+- A deploy preview **cannot** test an RLS change: preview and production share
+  one database. Test with `begin … rollback` instead.
+
+`supabase/migrations/` holds the migration and its rollback.
