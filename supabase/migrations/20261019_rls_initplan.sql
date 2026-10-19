@@ -16,17 +16,23 @@
 --
 -- RLS also distorted the plan shape: the bets scan was a Nested Loop of 3,470
 -- iterations and became a Hash Join again once the qual stopped being opaque.
--- Row counts were identical before and after (3,470 players, 30,950 bets), so
--- this changes performance only -- the same people see exactly the same rows.
+--
+-- This does not change who can read what. is_team_member() takes no arguments
+-- and reads only the JWT, so its value cannot vary between rows of one
+-- statement; hoisting it is therefore semantics-preserving by construction.
+-- Row counts were identical before and after (3,470 players, 30,950 bets).
 --
 -- Production context: weekly_kpis averaged 5,059 ms and peaked at 7,873 ms
 -- through PostgREST against an 8s statement_timeout, which is what the
 -- "canceling statement due to statement timeout" banners were.
 
--- ALTER POLICY takes ACCESS EXCLUSIVE on each table, so it waits behind
--- in-flight dashboard queries. Fail fast rather than queue up behind a slow
--- read and block every other session behind us.
-set lock_timeout = '10s';
+begin;
+
+-- ALTER POLICY takes ACCESS EXCLUSIVE on each table, and while it waits, every
+-- new query on that table queues behind it. Give up rather than freeze the
+-- dashboard: four test runs were killed by this lock wait, so it is not
+-- theoretical. Run this when nobody is on the dashboard.
+set local lock_timeout = '10s';
 
 alter policy "team full access" on public.affiliate_payouts using ((select public.is_team_member())) with check ((select public.is_team_member()));
 alter policy "team full access" on public.affiliate_players using ((select public.is_team_member())) with check ((select public.is_team_member()));
@@ -38,36 +44,28 @@ alter policy "team full access" on public.budgets using ((select public.is_team_
 alter policy "team full access" on public.channel_budgets using ((select public.is_team_member())) with check ((select public.is_team_member()));
 alter policy "team full access" on public.channel_reports using ((select public.is_team_member())) with check ((select public.is_team_member()));
 alter policy "team full access" on public.data_imports using ((select public.is_team_member())) with check ((select public.is_team_member()));
+alter policy deposit_periods_team_read on public.deposit_periods using ((select public.is_team_member()));
 alter policy deposit_periods_team_write on public.deposit_periods using ((select public.is_team_member())) with check ((select public.is_team_member()));
 alter policy "team full access" on public.fx_rates using ((select public.is_team_member()));
 alter policy "team full access" on public.ga4_channel_daily using ((select public.is_team_member())) with check ((select public.is_team_member()));
 alter policy "team full access" on public.goals using ((select public.is_team_member())) with check ((select public.is_team_member()));
 alter policy manual_daily_metrics_team on public.manual_daily_metrics using ((select public.is_team_member())) with check ((select public.is_team_member()));
 alter policy "team full access" on public.optimization_notes using ((select public.is_team_member())) with check ((select public.is_team_member()));
+alter policy payment_transactions_team_read on public.payment_transactions using ((select public.is_team_member()));
 alter policy payment_transactions_team_write on public.payment_transactions using ((select public.is_team_member())) with check ((select public.is_team_member()));
+alter policy player_sport_profile_team_read on public.player_sport_profile using ((select public.is_team_member()));
 alter policy player_sport_profile_team_write on public.player_sport_profile using ((select public.is_team_member())) with check ((select public.is_team_member()));
 alter policy "team full access" on public.players using ((select public.is_team_member())) with check ((select public.is_team_member()));
 alter policy "team full access" on public.social_daily using ((select public.is_team_member()));
 alter policy sport_aliases_team_read on public.sport_aliases using ((select public.is_team_member()));
 alter policy "team can manage team list" on public.team_members using ((select public.is_team_member())) with check ((select public.is_team_member()));
+alter policy "team can view team list" on public.team_members using ((select public.is_team_member()));
 alter policy "team full access" on public.vip_tiers using ((select public.is_team_member())) with check ((select public.is_team_member()));
 alter policy "team full access" on public.weekly_spend using ((select public.is_team_member()));
 
--- Four tables carry a SELECT policy that duplicates an ALL policy on the same
--- table with an identical qual, so the check ran twice per row for no gain.
--- Dropping the SELECT one leaves the ALL policy, which already permits SELECT
--- with the same condition: nobody loses access. Supabase's linter flags these
--- as multiple_permissive_policies.
---
--- sport_aliases_team_read is deliberately NOT dropped: it is the only policy on
--- that table, so dropping it would lock the team out of it.
-drop policy deposit_periods_team_read on public.deposit_periods;
-drop policy payment_transactions_team_read on public.payment_transactions;
-drop policy player_sport_profile_team_read on public.player_sport_profile;
-drop policy "team can view team list" on public.team_members;
-
--- Every remaining policy must be on the wrapped form. Fails the migration
--- rather than leaving it half applied.
+-- All 28 policies must end up on the wrapped form and none may be lost. Inside
+-- the transaction, so a failure rolls the whole thing back rather than leaving
+-- half the tables converted.
 do $$
 declare bare int; total int;
 begin
@@ -75,10 +73,12 @@ begin
     into bare, total
   from pg_policies where schemaname = 'public';
 
-  if bare > 0 then
-    raise exception 'RLS migration incomplete: % of % policies still evaluate per row', bare, total;
+  if total <> 28 then
+    raise exception 'Expected 28 policies, found % -- did something else change RLS?', total;
   end if;
-  if total <> 24 then
-    raise exception 'Expected 24 policies after the migration, found %', total;
+  if bare > 0 then
+    raise exception 'Incomplete: % of % policies still evaluate per row', bare, total;
   end if;
 end $$;
+
+commit;
