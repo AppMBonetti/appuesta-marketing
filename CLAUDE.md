@@ -169,3 +169,33 @@ above their tier floor daily on unchanged data.
 
 Once reports arrive daily the anchor sits a day behind today and these numbers
 converge on what the old form gave; nothing needs undoing.
+
+## Hand-typed data is the one kind we cannot re-import
+
+Everything else in this database comes from a weekly report and can be rebuilt
+by importing it again. `player_notes` cannot: what the VIP advisor wrote about a
+player exists nowhere else. That changes the defaults.
+
+- **No foreign key to `players(id)`.** `on delete cascade` would mean a re-import
+  that drops a player row silently deletes notes nobody can get back, and adding
+  the constraint takes a lock on `players`, which the dashboard reads constantly
+  — the first attempt at the migration timed out waiting for it. An orphaned
+  note is a much smaller problem than a deleted one.
+- **The byline is stamped by a trigger from `auth.jwt()`, not sent by the
+  client.** A log is only worth reading if "Marcos wrote this" is a fact. The
+  trigger also holds `created_by` and `created_at` steady on update.
+- **Write policies are split.** `select`/`insert` for any team member;
+  `update`/`delete` only for the row's author or an admin (`is_team_admin()`,
+  which mirrors `is_team_member()` and therefore needs the same `(select ...)`
+  wrapper). Once the advisor has a login, the team is no longer two admins who
+  trust each other with everything.
+- **New SECURITY DEFINER functions are granted to `public` by default**, which
+  reaches `anon` through the REST schema. `is_team_member()` does not carry that
+  grant; `is_team_admin()` had to have it revoked. The Supabase linter catches
+  this one — run `get_advisors` after adding a function.
+- `coalesce` and `nullif` are grammar, not catalog functions. Under
+  `set search_path = ''` they still resolve bare; writing `pg_catalog.nullif(...)`
+  fails at runtime, not at creation, so only an actual insert finds it.
+- A note's age is measured against **`CURRENT_DATE`**, unlike every player
+  recency counter. Someone typed it at a real moment; the calendar moving is
+  news here.
