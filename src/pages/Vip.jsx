@@ -6,6 +6,7 @@ import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../component
 import { downloadCsv } from "../lib/csv";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "../components/SortHeader";
+import VipTracker from "../components/VipTracker";
 
 const TIER_COLORS = ["#8B93A3", "#B0555F", "#C9424F", "#E4022B", "#F03A57", "#F97A8F"];
 
@@ -154,6 +155,9 @@ export default function Vip({ s, lang }) {
   const [players, setPlayers] = useState([]);
   const [openTier, setOpenTier] = useState(null);
   const [search, setSearch] = useState("");
+  // Tracking first: opening this page, the question is almost always "how are my
+  // VIPs doing", not "what does the ladder look like".
+  const [view, setView] = useState("track");
 
   useEffect(() => {
     let active = true;
@@ -195,11 +199,27 @@ export default function Vip({ s, lang }) {
 
   return (
     <>
-      <SectionHeading title={s.vipTitle} subtitle={s.vipSub} />
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <SectionHeading
+          title={view === "track" ? s.vipTrack.title : s.vipTitle}
+          subtitle={view === "track" ? s.vipTrack.sub : s.vipSub}
+        />
+        <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
+          {["track", "ladder"].map(v => (
+            <button key={v} onClick={() => setView(v)}
+              style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: view === v ? C.accent : "transparent", color: view === v ? "#fff" : C.inkDim }}>
+              {v === "track" ? s.vipToggle.track : s.vipToggle.ladder}
+            </button>
+          ))}
+        </div>
+      </div>
       {loading && <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spinner size={22} /></div>}
       {error && <Panel style={{ color: C.negative }}>{error}</Panel>}
-      {!loading && !error && (
-        !hasData ? <EmptyState s={s} /> : (
+      {!loading && !error && !hasData && <EmptyState s={s} />}
+      {!loading && !error && hasData && view === "track" && (
+        <VipTracker s={s} tiers={rows} progress={players} />
+      )}
+      {!loading && !error && hasData && view === "ladder" && (
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
               <p style={{ color: C.inkFaint, fontSize: 12, margin: 0 }}>{s.tierDrill.hint}</p>
@@ -267,7 +287,6 @@ export default function Vip({ s, lang }) {
                 : "Tiers are recalculated on every import from the trailing 90-day wagered amount. With no bets recorded in that window a player sits in Prospecto — the base tier, which has no minimum wager."}
             </p>
           </>
-        )
       )}
     </>
   );
