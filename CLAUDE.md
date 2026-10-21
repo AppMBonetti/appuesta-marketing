@@ -144,6 +144,16 @@ above their tier floor daily on unchanged data.
   641 ms → 658 ms.
 - **New recency columns must use the anchor**, not `CURRENT_DATE`. Nothing warns
   you: the old form looks right and is wrong only between imports.
+- **Anchoring a *window* is not a find-and-replace.** `player_tier_progress`
+  computed the trailing wager with a correlated subquery per player and
+  `bet_date >= now() - '90 days'`. Swapping that constant for bounds arriving
+  from a join took the view to **10,321 ms** against the 8s timeout and broke
+  the VIP page in production: the planner can fold a constant into
+  `bets(bet_date)`, but not a joined value, so it re-scanned the whole index —
+  3,467 correlated executions, twice over, since `trailing_wager` appears more
+  than once in the select list. One grouped pass over the window joined to the
+  players gives the same figures in **378 ms**. Any predicate that stops being
+  a constant needs re-timing, not just re-reading.
 - The anchor is the *earliest* of the three sources, so a lagging source makes
   the dashboard conservative rather than inventing coverage.
 - Screens that show stage counts show the cut-off date beside them
