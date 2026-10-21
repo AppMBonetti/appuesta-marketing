@@ -112,3 +112,50 @@ stopped being opaque.
   one database. Test with `begin … rollback` instead.
 
 `supabase/migrations/` holds the migration and its rollback.
+
+## Recency is measured against the data, not the clock
+
+Reports land weekly. A day counter written as `CURRENT_DATE - last_deposit_date`
+therefore grows every day while the data stands still, and since the lifecycle
+stage is a set of thresholds on it (8 → Cooling, 15 → At risk, 30 → Churned),
+the whole funnel decays on its own between imports and snaps back on import
+day. Measured on 2026-10-21 against data through 2026-10-18 — three days, no
+new information:
+
+| | today | at the cut-off |
+|---|---|---|
+| Active | 180 | 212 |
+| At risk | 108 | 79 |
+
+Forty-two players had slid down a stage because the calendar moved. The deeper
+fault is that `CURRENT_DATE` cannot tell "has not deposited" from "we have not
+imported it yet", and quietly assumes the worse of the two.
+
+So day counters anchor to the `data_through` view — one row holding the last
+day every player-recency source covers — and `player_lifecycle`,
+`player_tier_progress` and `player_directory` cross join it. The VIP tier
+window does too: it was `now() - 90 days`, which shrank each VIP's cushion
+above their tier floor daily on unchanged data.
+
+- **`data_through` is a view, not a function.** A STABLE function with
+  `SECURITY DEFINER` or a `SET` clause cannot be inlined and would run per row —
+  the trap above, twice over. As a view it is rewritten into the query and its
+  aggregates become InitPlans. Confirmed in the plan; `player_lifecycle` went
+  641 ms → 658 ms.
+- **New recency columns must use the anchor**, not `CURRENT_DATE`. Nothing warns
+  you: the old form looks right and is wrong only between imports.
+- The anchor is the *earliest* of the three sources, so a lagging source makes
+  the dashboard conservative rather than inventing coverage.
+- Screens that show stage counts show the cut-off date beside them
+  (`s.dataThrough`), so a figure that has not moved since Monday reads as
+  correct rather than stale.
+- **Still on `CURRENT_DATE`, deliberately:** `cohort_retention_by_tier`,
+  `cohort_deposit_detail`, `cohort_month_detail`,
+  `cohort_deposit_retention_period` (cohort maturity, not player recency — the
+  question is whether a window has elapsed), and `stale_open_bets`,
+  `bet_coverage`, `account_watchlist` (operational chase lists, where
+  overstating staleness is the safe direction). Revisit the cohort ones if
+  retention starts drifting between imports the same way.
+
+Once reports arrive daily the anchor sits a day behind today and these numbers
+converge on what the old form gave; nothing needs undoing.

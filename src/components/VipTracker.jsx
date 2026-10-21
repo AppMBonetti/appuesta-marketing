@@ -92,6 +92,13 @@ function Chip({ label, color }) {
   );
 }
 
+function fmtDay(value, lang) {
+  if (!value) return "";
+  return new Date(`${String(value).slice(0, 10)}T12:00:00Z`).toLocaleDateString(
+    lang === "es" ? "es-DO" : "en-GB",
+    { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 /** "hace 3 d", or a dash when the player has never done it at all. */
 function days(n, s) {
   if (n == null) return <span style={{ color: C.inkFaint }}>—</span>;
@@ -110,7 +117,7 @@ const SORT_COLUMNS = [
   { key: "cushion", align: "right", label: s => s.vipTrack.cols.cushion, value: p => p.cushion },
 ];
 
-export default function VipTracker({ s, tiers, progress }) {
+export default function VipTracker({ s, lang, tiers, progress }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
 
@@ -164,6 +171,7 @@ export default function VipTracker({ s, tiers, progress }) {
   if (!enriched) return <div style={{ display: "flex", justifyContent: "center", padding: 50 }}><Spinner size={20} /></div>;
   if (!enriched.length) return <Panel style={{ color: C.inkDim, fontSize: 12.5 }}>{s.vipTrack.none}</Panel>;
 
+  const through = enriched[0]?.data_through;
   const attention = enriched.filter(p => NEEDS_ATTENTION.includes(p.lifecycle));
   const dropping = enriched.filter(p => p.thinCushion);
   const groupGgr = enriched.reduce((sum, p) => sum + (Number(p.ggr) || 0), 0);
@@ -190,7 +198,15 @@ export default function VipTracker({ s, tiers, progress }) {
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 9, flexWrap: "wrap" }}>
-        <p style={{ fontSize: 11.5, color: C.inkFaint, margin: 0, maxWidth: 620 }}>{s.vipTrack.windowNote}</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {through && (
+            <span title={s.dataThroughHint}
+              style={{ fontSize: 11.5, color: C.inkDim, border: `1px solid ${C.panelBorder}`, borderRadius: 99, padding: "4px 11px", whiteSpace: "nowrap" }}>
+              {s.dataThrough.replace("{d}", fmtDay(through, lang))}
+            </span>
+          )}
+          <p style={{ fontSize: 11.5, color: C.inkFaint, margin: 0, maxWidth: 560 }}>{s.vipTrack.windowNote}</p>
+        </div>
         <button
           onClick={() => downloadCsv(`appuesta-vip-${new Date().toISOString().slice(0, 10)}.csv`, CSV_COLUMNS, sorted)}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12, cursor: "pointer" }}>

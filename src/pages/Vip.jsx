@@ -217,7 +217,7 @@ export default function Vip({ s, lang }) {
       {error && <Panel style={{ color: C.negative }}>{error}</Panel>}
       {!loading && !error && !hasData && <EmptyState s={s} />}
       {!loading && !error && hasData && view === "track" && (
-        <VipTracker s={s} tiers={rows} progress={players} />
+        <VipTracker s={s} lang={lang} tiers={rows} progress={players} />
       )}
       {!loading && !error && hasData && view === "ladder" && (
           <>

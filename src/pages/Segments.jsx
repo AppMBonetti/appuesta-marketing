@@ -108,6 +108,13 @@ const CSV_COLUMNS = [
 // and the summary row agree rather than sorting alphabetically.
 const LOGIN_BUCKETS = ["0-1 days", "2-7 days", "8-14 days", "15-30 days", "30+ days", "Never logged in"];
 
+function fmtDay(value, lang) {
+  if (!value) return "";
+  return new Date(`${String(value).slice(0, 10)}T12:00:00Z`).toLocaleDateString(
+    lang === "es" ? "es-DO" : "en-GB",
+    { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 const EMPTY_FILTERS = {
   stage: "", tier: "", sport: "", search: "", minDeposits: "", minBets: "",
   login: "", engaged: false,
@@ -254,9 +261,23 @@ export default function Segments({ s, lang }) {
   if (error) return <Panel style={{ color: C.negative }}>{error}</Panel>;
   if (!players.length) return (<><SectionHeading title={s.seg.title} subtitle={s.seg.sub} /><EmptyState s={s} /></>);
 
+  // Every stage is a threshold on days since the last deposit, counted from the
+  // last day of data rather than from today -- otherwise the funnel decays on
+  // its own between weekly imports. Saying which day that is keeps the counts
+  // from looking like they drifted.
+  const through = players[0]?.data_through;
+
   return (
     <>
-      <SectionHeading title={s.seg.title} subtitle={s.seg.sub} />
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <SectionHeading title={s.seg.title} subtitle={s.seg.sub} />
+        {through && (
+          <span title={s.dataThroughHint}
+            style={{ fontSize: 11.5, color: C.inkDim, border: `1px solid ${C.panelBorder}`, borderRadius: 99, padding: "4px 11px", whiteSpace: "nowrap" }}>
+            {s.dataThrough.replace("{d}", fmtDay(through, lang))}
+          </span>
+        )}
+      </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
         {STAGES.map(stage => {
