@@ -5,6 +5,8 @@ import { C } from "../lib/theme";
 import { dateRangeLabel, formatWeek, formatMonth } from "../lib/period";
 import { downloadCsv } from "../lib/csv";
 import { Spinner, fmtDOP } from "./ui";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "./SortHeader";
 
 const CSV_COLUMNS = [
   { label: "player_id", value: p => p.id },
@@ -23,6 +25,17 @@ const CSV_COLUMNS = [
   { label: "total_deposit_amount_dop", value: p => p.total_deposit_amount },
   { label: "total_deposit_count", value: p => p.total_deposit_count },
   { label: "ggr_dop", value: p => p.ggr },
+];
+
+const SORT_COLUMNS = [
+  { key: "player", kind: "text", label: s => s.drill.cols.player, value: p => p.username || p.name || p.id },
+  { key: "tier", kind: "text", label: s => s.drill.cols.tier, value: p => p.vip_tier },
+  { key: "depositsInPeriod", label: s => s.ret.drill.colDepositsInPeriod, value: p => p.deposits_in_period },
+  { key: "amountInPeriod", label: s => s.ret.drill.colAmountInPeriod, value: p => p.amount_in_period },
+  { key: "lastDeposit", kind: "date", label: s => s.ret.drill.colLastDeposit, value: p => p.last_deposit_date },
+  { key: "lastLogin", kind: "date", label: s => s.ret.drill.colLastLogin, value: p => p.last_login_at },
+  { key: "deposits", label: s => s.drill.cols.deposits, value: p => p.total_deposit_amount },
+  { key: "ggr", label: s => s.drill.cols.ggr, value: p => p.ggr },
 ];
 
 /**
@@ -78,6 +91,7 @@ export default function CohortDrill({ s, lang, cohortWeek, period, month, onClos
 
   const shown = rows.filter(r =>
     only === "all" ? true : only === "retained" ? r.retained : !r.retained);
+  const { sorted, sort, toggle } = useSortedRows(shown, SORT_COLUMNS);
 
   const th = { padding: "9px 12px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 11.5, whiteSpace: "nowrap" };
   const td = { padding: "8px 12px", fontSize: 12.5, whiteSpace: "nowrap" };
@@ -113,7 +127,7 @@ export default function CohortDrill({ s, lang, cohortWeek, period, month, onClos
               ))}
             </div>
             {shown.length > 0 && (
-              <button onClick={() => downloadCsv(`appuesta-cohorte-${cohortWeek}-${period.start}.csv`, CSV_COLUMNS, shown)}
+              <button onClick={() => downloadCsv(`appuesta-cohorte-${cohortWeek}-${period.start}.csv`, CSV_COLUMNS, sorted)}
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5, cursor: "pointer" }}>
                 <Download size={13} /> {s.drill.export}
               </button>
@@ -132,14 +146,10 @@ export default function CohortDrill({ s, lang, cohortWeek, period, month, onClos
             : (
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr>
-                    {[s.drill.cols.player, s.drill.cols.tier, s.ret.drill.colDepositsInPeriod,
-                      s.ret.drill.colAmountInPeriod, s.ret.drill.colLastDeposit, s.ret.drill.colLastLogin,
-                      s.drill.cols.deposits, s.drill.cols.ggr].map(h => <th key={h} style={th}>{h}</th>)}
-                  </tr>
+                  <SortHeader columns={SORT_COLUMNS} sort={sort} toggle={toggle} s={s} th={th} />
                 </thead>
                 <tbody>
-                  {shown.map(p => (
+                  {sorted.map(p => (
                     <tr key={p.id} style={{ background: p.retained ? "transparent" : "rgba(214,72,72,0.05)" }}>
                       <td style={{ ...td, fontWeight: 500 }}>
                         {p.username || p.name || p.id}

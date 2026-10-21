@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Personal Claude Code settings. Not committed: it sets the permission mode,
+# which is a per-person choice, not a project one.
+.claude/settings.local.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

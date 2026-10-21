@@ -3,6 +3,8 @@ import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { formatWeek, formatMonth, dateRangeLabel } from "../lib/period";
 import { SectionHeading, Panel, Spinner, EmptyState } from "../components/ui";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "../components/SortHeader";
 import CohortDrill from "../components/CohortDrill";
 
 const MONTH_INDEXES = [0, 1, 2, 3];
@@ -107,6 +109,12 @@ function pivot(flatRows, keyField, indexField) {
   return [...byCohort.values()].sort((a, b) => String(a[keyField]).localeCompare(String(b[keyField])));
 }
 
+const TIER_SORT_COLUMNS = [
+  { key: "tier", kind: "text", label: s => s.vipCols.tier, value: r => r.tier_name },
+  { key: "players", label: s => s.ret.players, value: r => r.players },
+  { key: "pct", label: s => s.retByTierSub, value: r => r.pct },
+];
+
 export default function Retention({ s, lang }) {
   const [view, setView] = useState("total");
   const [granularity, setGranularity] = useState("period");
@@ -140,6 +148,8 @@ export default function Retention({ s, lang }) {
 
   const hasMonthly = monthly.some(r => r.players > 0);
   const matureTiers = byTier.filter(r => r.players > 0);
+  const { sorted: tierSorted, sort: tierSort, toggle: tierToggle } =
+    useSortedRows(matureTiers, TIER_SORT_COLUMNS);
   // Columns are whatever reporting periods have been uploaded, so the grid
   // becomes weekly by itself once weekly payments files arrive.
   const periodKeys = [...new Set(periodRows.map(r => `${r.period_start}|${r.period_end}`))].sort();
@@ -219,11 +229,12 @@ export default function Retention({ s, lang }) {
           ) : (
             <Panel style={{ padding: 4, overflow: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead><tr>{[s.vipCols.tier, s.ret.players, s.retByTierSub].map(h => (
-                  <th key={h} style={{ padding: "11px 16px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 12 }}>{h}</th>
-                ))}</tr></thead>
+                <thead>
+                  <SortHeader columns={TIER_SORT_COLUMNS} sort={tierSort} toggle={tierToggle} s={s}
+                    th={{ padding: "11px 16px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 12 }} />
+                </thead>
                 <tbody>
-                  {matureTiers.map(row => (
+                  {tierSorted.map(row => (
                     <tr key={row.tier_name}>
                       <td style={{ padding: "10px 16px", fontWeight: 500 }}>{row.tier_name}</td>
                       <td style={{ padding: "10px 16px", color: C.inkDim }}>{row.players}</td>

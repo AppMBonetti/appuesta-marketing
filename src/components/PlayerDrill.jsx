@@ -5,6 +5,8 @@ import { C } from "../lib/theme";
 import { addDays, formatWeek } from "../lib/period";
 import { downloadCsv } from "../lib/csv";
 import { Spinner, fmtDOP } from "./ui";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "./SortHeader";
 
 // Only metrics whose members are individually identifiable are drillable.
 // Deposit counts come from snapshot deltas rather than per-deposit rows, so
@@ -27,6 +29,19 @@ const CSV_COLUMNS = [
   { label: "total_ggr_dop", value: p => p.total_ggr_sportsbook },
   { label: "last_login", value: p => p.last_login_at },
   { label: "days_since_login", value: p => p.days_since_login },
+];
+
+const SORT_COLUMNS = [
+  { key: "player", kind: "text", label: s => s.drill.cols.player, value: p => p.name || p.id },
+  { key: "email", kind: "text", label: s => s.drill.cols.email, value: p => p.email },
+  { key: "tier", kind: "text", label: s => s.drill.cols.tier, value: p => p.vip_tier },
+  { key: "registered", kind: "date", label: s => s.drill.cols.registered, value: p => p.registered_at },
+  { key: "ftdDate", kind: "date", label: s => s.drill.cols.ftdDate, value: p => p.first_deposit_date },
+  { key: "ftdAmount", label: s => s.drill.cols.ftdAmount, value: p => p.first_deposit_amount },
+  { key: "deposits", label: s => s.drill.cols.deposits, value: p => p.total_deposit_amount },
+  { key: "count", label: s => s.drill.cols.count, value: p => p.total_deposit_count },
+  { key: "ggr", label: s => s.drill.cols.ggr, value: p => p.total_ggr_sportsbook },
+  { key: "lastLogin", kind: "date", label: s => s.seg.cols.lastLogin, value: p => p.last_login_at },
 ];
 
 export default function PlayerDrill({ s, lang, metric, week, onClose }) {
@@ -64,6 +79,8 @@ export default function PlayerDrill({ s, lang, metric, week, onClose }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const { sorted, sort, toggle } = useSortedRows(rows, SORT_COLUMNS);
+
   if (!spec) return null;
 
   const th = { padding: "9px 12px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 11.5, whiteSpace: "nowrap" };
@@ -89,7 +106,7 @@ export default function PlayerDrill({ s, lang, metric, week, onClose }) {
           <div style={{ display: "flex", gap: 8 }}>
             {rows.length > 0 && (
               <button
-                onClick={() => downloadCsv(`appuesta-${metric}-${week}.csv`, CSV_COLUMNS, rows)}
+                onClick={() => downloadCsv(`appuesta-${metric}-${week}.csv`, CSV_COLUMNS, sorted)}
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5, cursor: "pointer" }}
               ><Download size={13} /> {s.drill.export}</button>
             )}
@@ -107,15 +124,10 @@ export default function PlayerDrill({ s, lang, metric, week, onClose }) {
             : (
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr>
-                    {[s.drill.cols.player, s.drill.cols.email, s.drill.cols.tier, s.drill.cols.registered,
-                      s.drill.cols.ftdDate, s.drill.cols.ftdAmount, s.drill.cols.deposits,
-                      s.drill.cols.count, s.drill.cols.ggr,
-                      s.seg.cols.lastLogin].map(h => <th key={h} style={th}>{h}</th>)}
-                  </tr>
+                  <SortHeader columns={SORT_COLUMNS} sort={sort} toggle={toggle} s={s} th={th} />
                 </thead>
                 <tbody>
-                  {rows.map(p => (
+                  {sorted.map(p => (
                     <tr key={p.id}>
                       <td style={{ ...td, fontWeight: 500 }}>{p.name || p.id}</td>
                       <td style={{ ...td, color: C.inkDim }}>{p.email || "—"}</td>

@@ -3,10 +3,43 @@ import { Download, Search, X, UserMinus, ShieldAlert, RotateCcw } from "lucide-r
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { downloadCsv } from "../lib/csv";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "../components/SortHeader";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
 
 // Ordered by where a player sits in the funnel, not alphabetically, so the
 // strip reads as a lifecycle rather than a list.
+// Which header sorts on what. Keys line up with the header row below; a column
+// with no key (the action button) is not sortable.
+const SORT_COLUMNS = [
+  { key: "id", kind: "text", label: s => s.seg.cols.id, value: p => p.id },
+  { key: "player", kind: "text", label: s => s.seg.cols.player, value: p => p.name || p.username || p.email },
+  { key: "lifecycle", kind: "text", label: s => s.seg.cols.lifecycle, value: p => p.lifecycle },
+  { key: "tier", kind: "text", label: s => s.seg.cols.tier, value: p => p.vip_tier },
+  { key: "deposits", label: s => s.seg.cols.deposits, value: p => p.deposits },
+  { key: "depositCount", label: s => s.seg.cols.depositCount, value: p => p.deposit_count },
+  { key: "ggr", label: s => s.seg.cols.ggr, value: p => p.ggr },
+  { key: "bets", label: s => s.seg.cols.bets, value: p => p.bets },
+  { key: "stake", label: s => s.seg.cols.stake, value: p => p.total_stake },
+  { key: "avgStake", label: s => s.seg.cols.avgStake, value: p => p.avg_stake },
+  { key: "topSport", kind: "text", label: s => s.seg.cols.topSport, value: p => p.top_sport },
+  { key: "lastLogin", kind: "date", label: s => s.seg.cols.lastLogin, value: p => p.last_login_at },
+  { key: "lastBet", kind: "date", label: s => s.seg.cols.lastBet, value: p => p.last_bet_date },
+  { key: "lastDeposit", kind: "date", label: s => s.seg.cols.lastDeposit, value: p => p.last_deposit_date },
+  { key: "daysSinceDeposit", label: s => s.seg.cols.daysSinceDeposit, value: p => p.days_since_deposit },
+];
+
+const WATCH_SORT_COLUMNS = [
+  { key: "id", kind: "text", label: s => s.seg.cols.id, value: w => w.id },
+  { key: "player", kind: "text", label: s => s.seg.cols.player, value: w => w.username || w.name || w.email },
+  { key: "flag", kind: "text", label: s => s.seg.watch.cols.flag, value: w => w.flag },
+  { key: "reason", kind: "text", label: s => s.seg.watch.cols.reason, value: w => w.exclusion_reason },
+  { key: "sharing", label: s => s.seg.watch.cols.sharing, value: w => w.accounts_sharing_name },
+  { key: "deposits", label: s => s.seg.cols.deposits, value: w => w.total_deposit_amount },
+  { key: "depositCount", label: s => s.seg.cols.depositCount, value: w => w.total_deposit_count },
+  { key: "lastLogin", kind: "date", label: s => s.seg.cols.lastLogin, value: w => w.last_login_at },
+];
+
 const STAGES = ["Registered", "New", "Casual", "Active", "Cooling", "At risk", "Churned"];
 const STAGE_COLORS = {
   Registered: "#8B93A3", New: "#6E9BF2", Casual: "#B073F0", Active: "#3ECB9E",
@@ -74,6 +107,13 @@ const CSV_COLUMNS = [
 // Login-recency buckets in the order they read as a decay curve, so the filter
 // and the summary row agree rather than sorting alphabetically.
 const LOGIN_BUCKETS = ["0-1 days", "2-7 days", "8-14 days", "15-30 days", "30+ days", "Never logged in"];
+
+function fmtDay(value, lang) {
+  if (!value) return "";
+  return new Date(`${String(value).slice(0, 10)}T12:00:00Z`).toLocaleDateString(
+    lang === "es" ? "es-DO" : "en-GB",
+    { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
 
 const EMPTY_FILTERS = {
   stage: "", tier: "", sport: "", search: "", minDeposits: "", minBets: "",
@@ -192,6 +232,12 @@ export default function Segments({ s, lang }) {
     });
   }, [players, filters]);
 
+  const { sorted, sort, toggle } = useSortedRows(filtered, SORT_COLUMNS);
+
+  const watchShown = watchFlag ? watchlist.filter(w => w.flag === watchFlag) : watchlist;
+  const { sorted: watchSorted, sort: watchSort, toggle: watchToggle } =
+    useSortedRows(watchShown, WATCH_SORT_COLUMNS);
+
   const byStage = Object.fromEntries(summary.map(r => [r.lifecycle, r]));
   const totalPlayers = summary.reduce((sum, r) => sum + Number(r.players || 0), 0);
 
@@ -208,16 +254,30 @@ export default function Segments({ s, lang }) {
       filters.engaged ? "engaged-not-depositing" : ""].filter(Boolean);
     const label = parts.length ? parts.join("-") : "todos";
     const slug = label.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-");
-    downloadCsv(`appuesta-segmento-${slug}-${new Date().toISOString().slice(0, 10)}.csv`, CSV_COLUMNS, filtered);
+    downloadCsv(`appuesta-segmento-${slug}-${new Date().toISOString().slice(0, 10)}.csv`, CSV_COLUMNS, sorted);
   }
 
   if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spinner size={22} /></div>;
   if (error) return <Panel style={{ color: C.negative }}>{error}</Panel>;
   if (!players.length) return (<><SectionHeading title={s.seg.title} subtitle={s.seg.sub} /><EmptyState s={s} /></>);
 
+  // Every stage is a threshold on days since the last deposit, counted from the
+  // last day of data rather than from today -- otherwise the funnel decays on
+  // its own between weekly imports. Saying which day that is keeps the counts
+  // from looking like they drifted.
+  const through = players[0]?.data_through;
+
   return (
     <>
-      <SectionHeading title={s.seg.title} subtitle={s.seg.sub} />
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <SectionHeading title={s.seg.title} subtitle={s.seg.sub} />
+        {through && (
+          <span title={s.dataThroughHint}
+            style={{ fontSize: 11.5, color: C.inkDim, border: `1px solid ${C.panelBorder}`, borderRadius: 99, padding: "4px 11px", whiteSpace: "nowrap" }}>
+            {s.dataThrough.replace("{d}", fmtDay(through, lang))}
+          </span>
+        )}
+      </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
         {STAGES.map(stage => {
@@ -310,17 +370,11 @@ export default function Segments({ s, lang }) {
         <Panel style={{ padding: 4, overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr>
-                {[s.seg.cols.id, s.seg.cols.player, s.seg.cols.lifecycle, s.seg.cols.tier,
-                  s.seg.cols.deposits, s.seg.cols.depositCount, s.seg.cols.ggr, s.seg.cols.bets,
-                  s.seg.cols.stake, s.seg.cols.avgStake, s.seg.cols.topSport,
-                  s.seg.cols.lastLogin, s.seg.cols.lastBet, s.seg.cols.lastDeposit,
-                  s.seg.cols.daysSinceDeposit,
-                  ""].map((h, i) => <th key={h || `act${i}`} style={th}>{h}</th>)}
-              </tr>
+              <SortHeader columns={SORT_COLUMNS} sort={sort} toggle={toggle}
+                s={s} th={th} trailing={1} />
             </thead>
             <tbody>
-              {filtered.map(p => (
+              {sorted.map(p => (
                 <tr key={p.id}>
                   <td style={{ ...td, color: C.inkFaint, fontVariantNumeric: "tabular-nums" }}>{p.id}</td>
                   <td style={{ ...td, fontWeight: 500 }}>
@@ -418,7 +472,6 @@ export default function Segments({ s, lang }) {
       {watchlist.length > 0 && (() => {
         const counts = Object.fromEntries(WATCH_FLAGS.map(f =>
           [f, watchlist.filter(w => w.flag === f).length]));
-        const shown = watchFlag ? watchlist.filter(w => w.flag === watchFlag) : watchlist;
         // A self-excluded player whose name also carries an account that is
         // still depositing is the one row here that is not just a metrics
         // question.
@@ -460,10 +513,10 @@ export default function Segments({ s, lang }) {
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9, fontSize: 12, color: C.inkDim }}>
-              <span>{s.seg.watch.count.replace("{n}", shown.length.toLocaleString())}</span>
+              <span>{s.seg.watch.count.replace("{n}", watchSorted.length.toLocaleString())}</span>
               <button onClick={() => downloadCsv(
                   `appuesta-cuentas-senaladas-${new Date().toISOString().slice(0, 10)}.csv`,
-                  WATCH_CSV_COLUMNS, shown)}
+                  WATCH_CSV_COLUMNS, watchSorted)}
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontSize: 12, cursor: "pointer" }}>
                 <Download size={13} /> {s.seg.watch.export}
               </button>
@@ -472,15 +525,11 @@ export default function Segments({ s, lang }) {
             <Panel style={{ padding: 4, overflow: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr>
-                    {[s.seg.cols.id, s.seg.cols.player, s.seg.watch.cols.flag, s.seg.watch.cols.reason,
-                      s.seg.watch.cols.sharing, s.seg.cols.deposits, s.seg.cols.depositCount,
-                      s.seg.cols.lastLogin].map(h => <th key={h} style={th}>{h}</th>)}
-                    <th style={th} />
-                  </tr>
+                  <SortHeader columns={WATCH_SORT_COLUMNS} sort={watchSort} toggle={watchToggle}
+                    s={s} th={th} trailing={1} />
                 </thead>
                 <tbody>
-                  {shown.map(w => (
+                  {watchSorted.map(w => (
                     <tr key={w.id} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
                       <td style={{ ...td, color: C.inkFaint, fontSize: 11.5 }}>{w.id}</td>
                       <td style={td}>

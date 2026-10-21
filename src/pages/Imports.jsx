@@ -3,6 +3,8 @@ import { UploadCloud, CheckCircle2, FileSpreadsheet, AlertCircle } from "lucide-
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { SectionHeading, Panel, Spinner, fmtDOP } from "../components/ui";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "../components/SortHeader";
 import DataCoverage from "../components/DataCoverage";
 import DataHealth from "../components/DataHealth";
 import { parseAltenarFile } from "../lib/importers/altenar";
@@ -119,6 +121,16 @@ const CARD_DEFS = [
   { source: "Instagram", labelKey: "instagramCard" },
 ];
 
+// This list is read when something went wrong, so sorting by status or by row
+// count is how a failed or short import is found among the successful ones.
+const LOG_SORT_COLUMNS = [
+  { key: "source", kind: "text", label: (s, lang) => (lang === "es" ? "Fuente" : "Source"), value: l => l.source },
+  { key: "date", kind: "date", label: (s, lang) => (lang === "es" ? "Fecha" : "Date"), value: l => l.imported_at },
+  { key: "file", kind: "text", label: (s, lang) => (lang === "es" ? "Archivo" : "File"), value: l => l.filename },
+  { key: "rows", label: (s, lang) => (lang === "es" ? "Filas" : "Rows"), value: l => l.row_count },
+  { key: "status", kind: "text", label: (s, lang) => (lang === "es" ? "Estado" : "Status"), value: l => l.status },
+];
+
 export default function Imports({ s, lang }) {
   const [importLog, setImportLog] = useState([]);
   const [lastBySource, setLastBySource] = useState({});
@@ -162,6 +174,9 @@ export default function Imports({ s, lang }) {
   }
 
   useEffect(() => { loadLog(); loadSourceTz(); }, []);
+
+  const { sorted: logSorted, sort: logSort, toggle: logToggle } =
+    useSortedRows(importLog, LOG_SORT_COLUMNS);
 
   function setPhase(source, phase, extra = {}) {
     setCardState(prev => ({ ...prev, [source]: { phase, ...extra } }));
@@ -630,9 +645,12 @@ export default function Imports({ s, lang }) {
       ) : (
         <Panel style={{ padding: 4, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-            <thead><tr>{[lang === "es" ? "Fuente" : "Source", lang === "es" ? "Fecha" : "Date", lang === "es" ? "Archivo" : "File", lang === "es" ? "Filas" : "Rows", lang === "es" ? "Estado" : "Status"].map(h => <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 11.5 }}>{h}</th>)}</tr></thead>
+            <thead>
+              <SortHeader columns={LOG_SORT_COLUMNS} sort={logSort} toggle={logToggle} s={s} lang={lang}
+                th={{ padding: "10px 14px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 11.5 }} />
+            </thead>
             <tbody>
-              {importLog.map(l => (
+              {logSorted.map(l => (
                 <tr key={l.id}>
                   <td style={{ padding: "8px 14px", fontWeight: 500 }}>{l.source}</td>
                   <td style={{ padding: "8px 14px", color: C.inkDim }}>{new Date(l.imported_at).toLocaleString(lang === "es" ? "es-DO" : "en-US")}</td>

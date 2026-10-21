@@ -7,6 +7,8 @@ import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { getPeriodRange, formatWeek } from "../lib/period";
 import { SectionHeading, Panel, KpiCard, PeriodBar, Spinner, fmtDOP, deltaOf, EmptyState } from "../components/ui";
+import { useSortedRows } from "../lib/sortRows";
+import { SortHeader } from "../components/SortHeader";
 import GgrReconciliation from "../components/GgrReconciliation";
 import DepositTrends from "../components/DepositTrends";
 import DepositDaily from "../components/DepositDaily";
@@ -50,6 +52,32 @@ function InfoNote({ children, tone = "neutral" }) {
     </div>
   );
 }
+
+const NET_CASH_SORT_COLUMNS = [
+  { key: "period", kind: "date", label: s => s.netCashCols.period, value: r => r.start },
+  { key: "depositors", align: "right", label: s => s.netCashCols.depositors, value: r => r.depositors },
+  { key: "depCount", align: "right", label: s => s.netCashCols.depCount, value: r => r.depositCount },
+  { key: "depAmount", align: "right", label: s => s.netCashCols.depAmount, value: r => r.depositAmount },
+  { key: "payCount", align: "right", label: s => s.netCashCols.payCount, value: r => r.payoutCount },
+  { key: "payAmount", align: "right", label: s => s.netCashCols.payAmount, value: r => r.payoutAmount },
+  { key: "net", align: "right", label: s => s.netCashCols.net, value: r => r.net },
+];
+
+// The two tier tables share their rows but not their columns: one view reads
+// them as deposits, the other as GGR, so each keeps its own sort.
+const DEP_TIER_SORT_COLUMNS = [
+  { key: "tier", kind: "text", label: s => s.vipCols.tier, value: t => t.tier_name },
+  { key: "deposited", label: (s, lang) => (lang === "es" ? "Total depositado" : "Total deposited"), value: t => t.total_deposits },
+  { key: "avgDeposit", label: (s, lang) => (lang === "es" ? "Depósito promedio" : "Avg deposit"), value: t => t.avg_deposit },
+  { key: "players", label: s => s.vipCols.players, value: t => t.players },
+];
+
+const GGR_TIER_SORT_COLUMNS = [
+  { key: "tier", kind: "text", label: s => s.vipCols.tier, value: t => t.tier_name },
+  { key: "ggr", label: s => s.ggrCol, value: t => t.total_ggr },
+  { key: "deposits", label: s => s.depositsCol, value: t => t.total_deposits },
+  { key: "players", label: s => s.vipCols.players, value: t => t.players },
+];
 
 export default function Funnel({ s, lang }) {
   const [view, setView] = useState("deposits");
@@ -201,6 +229,13 @@ export default function Funnel({ s, lang }) {
   const totalStake = betsWeekly.reduce((sum, b) => sum + (Number(b.stake) || 0), 0);
   const holdRate = totalStake > 0 ? ggrWeekly.reduce((sum, w) => sum + w.value, 0) / totalStake : null;
 
+  const { sorted: netCashSorted, sort: netCashSort, toggle: netCashToggle } =
+    useSortedRows(netCashRows, NET_CASH_SORT_COLUMNS);
+  const { sorted: depTierSorted, sort: depTierSort, toggle: depTierToggle } =
+    useSortedRows(tierRows, DEP_TIER_SORT_COLUMNS);
+  const { sorted: ggrTierSorted, sort: ggrTierSort, toggle: ggrTierToggle } =
+    useSortedRows(tierRows, GGR_TIER_SORT_COLUMNS);
+
   const thStyle = { padding: "12px 16px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 12 };
   const numCell = { padding: "10px 16px", textAlign: "right", fontWeight: 500 };
   const dimCell = { padding: "10px 16px", textAlign: "right", color: C.inkDim };
@@ -270,16 +305,11 @@ export default function Funnel({ s, lang }) {
               <Panel style={{ padding: 4, overflow: "auto", marginBottom: 26 }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
-                    <tr>
-                      <th style={thStyle}>{s.netCashCols.period}</th>
-                      {[s.netCashCols.depositors, s.netCashCols.depCount, s.netCashCols.depAmount,
-                        s.netCashCols.payCount, s.netCashCols.payAmount, s.netCashCols.net].map(h => (
-                        <th key={h} style={{ ...thStyle, textAlign: "right" }}>{h}</th>
-                      ))}
-                    </tr>
+                    <SortHeader columns={NET_CASH_SORT_COLUMNS} sort={netCashSort}
+                      toggle={netCashToggle} s={s} th={thStyle} />
                   </thead>
                   <tbody>
-                    {netCashRows.map(r => (
+                    {netCashSorted.map(r => (
                       <tr key={r.key}>
                         <td style={{ padding: "10px 16px" }}>{r.start} → {r.end}</td>
                         <td style={numCell}>{r.depositors.toLocaleString()}</td>
@@ -308,9 +338,12 @@ export default function Funnel({ s, lang }) {
           {!hasTierData ? <EmptyState s={s} /> : (
             <Panel style={{ padding: 4, overflow: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead><tr>{[s.vipCols.tier, lang === "es" ? "Total depositado" : "Total deposited", lang === "es" ? "Depósito promedio" : "Avg deposit", s.vipCols.players].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                <thead>
+                  <SortHeader columns={DEP_TIER_SORT_COLUMNS} sort={depTierSort}
+                    toggle={depTierToggle} s={s} lang={lang} th={thStyle} />
+                </thead>
                 <tbody>
-                  {tierRows.map(t => (
+                  {depTierSorted.map(t => (
                     <tr key={t.tier_name}>
                       <td style={{ padding: "10px 16px" }}>{t.tier_name}</td>
                       <td style={{ padding: "10px 16px", fontWeight: 500 }}>{fmtDOP(t.total_deposits)}</td>
@@ -358,9 +391,12 @@ export default function Funnel({ s, lang }) {
           {!hasTierData ? <div style={{ marginBottom: 26 }}><EmptyState s={s} /></div> : (
             <Panel style={{ padding: 4, overflow: "auto", marginBottom: 26 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead><tr>{[s.vipCols.tier, s.ggrCol, s.depositsCol, s.vipCols.players].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+                <thead>
+                  <SortHeader columns={GGR_TIER_SORT_COLUMNS} sort={ggrTierSort}
+                    toggle={ggrTierToggle} s={s} th={thStyle} />
+                </thead>
                 <tbody>
-                  {tierRows.map(t => (
+                  {ggrTierSorted.map(t => (
                     <tr key={t.tier_name}>
                       <td style={{ padding: "10px 16px" }}>{t.tier_name}</td>
                       <td style={{ padding: "10px 16px", fontWeight: 500 }}>{fmtDOP(t.total_ggr)}</td>
