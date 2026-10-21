@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, ChevronRight, ChevronDown, Mail } from "lucide-react";
+import { Download, ChevronRight, ChevronDown, Mail, Pin, MessageSquare } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { downloadCsv } from "../lib/csv";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "./SortHeader";
+import PlayerNotes, { pinnedNote, countLabel } from "./PlayerNotes";
 import { Panel, Spinner, fmtDOP } from "./ui";
 
 /**
@@ -68,6 +69,10 @@ const CSV_COLUMNS = [
   { label: "cushion_dop", value: p => p.cushion },
   { label: "country", value: p => p.country },
   { label: "registered_at", value: p => p.registered_at },
+  { label: "notes", value: p => p.notes.length },
+  // The pinned note is the one that changes whether you contact someone, so it
+  // belongs in the export too and not only on screen.
+  { label: "pinned_note", value: p => p.pinned?.body || "" },
 ];
 
 /**
@@ -157,6 +162,11 @@ export default function VipTracker({ s, lang, tiers, progress }) {
   const [rows, setRows] = useState(null);
   const [sports, setSports] = useState({});
   const [extra, setExtra] = useState({});
+  const [notes, setNotes] = useState({});
+  const [ids, setIds] = useState([]);
+  // Bumped when a note is added, pinned or removed, which re-runs the notes
+  // fetch alone rather than reloading player_lifecycle behind it.
+  const [notesTick, setNotesTick] = useState(0);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(null);
 
@@ -177,6 +187,7 @@ export default function VipTracker({ s, lang, tiers, progress }) {
 
       const ids = list.map(r => r.id);
       if (!ids.length) return;
+      setIds(ids);
 
       // The sport mix and the withdrawal/bonus columns live outside
       // player_lifecycle; both are fetched only for the handful shown here.
@@ -199,6 +210,25 @@ export default function VipTracker({ s, lang, tiers, progress }) {
     })();
     return () => { active = false; };
   }, [names]);
+
+  // Notes load on their own so that adding one re-reads a tiny table rather
+  // than player_lifecycle, which is the expensive view on this dashboard.
+  useEffect(() => {
+    if (!ids.length) return undefined;
+    let active = true;
+    (async () => {
+      const { data, error: err } = await supabase
+        .from("player_notes").select("*").in("player_id", ids)
+        .order("pinned", { ascending: false })
+        .order("happened_on", { ascending: false })
+        .order("id", { ascending: false });
+      if (!active || err) return;
+      const byPlayer = {};
+      for (const row of data || []) (byPlayer[row.player_id] ||= []).push(row);
+      setNotes(byPlayer);
+    })();
+    return () => { active = false; };
+  }, [ids, notesTick]);
 
   const enriched = useMemo(() => {
     if (!rows) return null;
@@ -226,9 +256,11 @@ export default function VipTracker({ s, lang, tiers, progress }) {
         // back out, so the net sits beside it rather than replacing it.
         net: withdrawn == null ? null : Number(r.deposits || 0) - withdrawn,
         sports: sports[r.id] || [],
+        notes: notes[r.id] || [],
+        pinned: pinnedNote(notes[r.id]),
       };
     });
-  }, [rows, tiers, progress, sports, extra]);
+  }, [rows, tiers, progress, sports, extra, notes]);
 
   const { sorted, sort, toggle } = useSortedRows(enriched || [], SORT_COLUMNS);
 
@@ -308,6 +340,7 @@ export default function VipTracker({ s, lang, tiers, progress }) {
                   return (
                     <Row key={p.id} p={p} s={s} lang={lang} td={td} num={num}
                       isOpen={isOpen} colCount={colCount}
+                      onNotesChanged={() => setNotesTick(t => t + 1)}
                       onToggle={() => setOpen(isOpen ? null : p.id)} />
                   );
                 })}
@@ -322,7 +355,7 @@ export default function VipTracker({ s, lang, tiers, progress }) {
   );
 }
 
-function Row({ p, s, lang, td, num, isOpen, onToggle, colCount }) {
+function Row({ p, s, lang, td, num, isOpen, onToggle, onNotesChanged, colCount }) {
   const Chevron = isOpen ? ChevronDown : ChevronRight;
   const top = p.sports[0];
   const rest = p.sports.length - 1;
@@ -338,10 +371,31 @@ function Row({ p, s, lang, td, num, isOpen, onToggle, colCount }) {
             {p.has_live_hook && (
               <span title={s.seg.liveHookHint} style={{ color: "#D9A848", fontSize: 10.5 }}>{s.seg.liveHook}</span>
             )}
+            {p.notes.length > 0 && !p.pinned && (
+              <span title={countLabel(p.notes.length, s.vipTrack.notes)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 2, color: C.inkFaint, fontSize: 10.5 }}>
+                <MessageSquare size={11} /> {p.notes.length}
+              </span>
+            )}
           </span>
           <div style={{ fontSize: 11, color: C.inkFaint, marginLeft: 19, overflow: "hidden", textOverflow: "ellipsis" }}>
             {p.email || ""}
           </div>
+          {/* A pinned note is the whole point of pinning: it has to be readable
+              without opening the row, or the person who needed it will not see
+              it before picking up the phone. */}
+          {p.pinned && (
+            <div title={p.pinned.body}
+              style={{
+                display: "flex", alignItems: "center", gap: 4, marginLeft: 19, marginTop: 3,
+                fontSize: 11, color: "#D9A848", maxWidth: 210,
+              }}>
+              <Pin size={10} style={{ flexShrink: 0 }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {p.pinned.body}
+              </span>
+            </div>
+          )}
         </td>
         <td style={td}><WhenCell date={p.last_deposit_date} days={p.days_since_deposit} s={s} lang={lang} warnOver={7} /></td>
         <td style={td}><WhenCell date={p.last_login_at} days={p.days_since_login} s={s} lang={lang} /></td>
@@ -373,7 +427,7 @@ function Row({ p, s, lang, td, num, isOpen, onToggle, colCount }) {
       {isOpen && (
         <tr style={{ background: "#1A1F28" }}>
           <td colSpan={colCount} style={{ padding: "4px 12px 18px 31px" }}>
-            <Detail p={p} s={s} lang={lang} />
+            <Detail p={p} s={s} lang={lang} onNotesChanged={onNotesChanged} />
           </td>
         </tr>
       )}
@@ -381,12 +435,16 @@ function Row({ p, s, lang, td, num, isOpen, onToggle, colCount }) {
   );
 }
 
-function Detail({ p, s, lang }) {
+function Detail({ p, s, lang, onNotesChanged }) {
   const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "14px 18px", marginTop: 10 };
   const heading = { fontSize: 11, fontWeight: 600, color: C.inkDim, marginTop: 16, letterSpacing: 0.3 };
   const d = s.vipTrack.detail;
   return (
     <div style={{ maxWidth: 1100 }}>
+      {/* First, not last: what someone wrote about this player changes how you
+          read everything underneath it. */}
+      <PlayerNotes playerId={p.id} notes={p.notes} s={s} lang={lang} onChanged={onNotesChanged} />
+
       <div style={heading}>{d.contact}</div>
       <div style={grid}>
         <Field label={d.email} value={p.email
