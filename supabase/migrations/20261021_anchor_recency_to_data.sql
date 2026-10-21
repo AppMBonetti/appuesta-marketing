@@ -124,52 +124,60 @@ create or replace view player_lifecycle with (security_invoker = true) as
 -- The VIP tier window had the same problem in a second form: the trailing
 -- wager was "now() - 90 days", so a VIP's cushion above their tier floor
 -- shrank every day on unchanged data. Anchored to the 90 days ending at the
--- close of the data cut-off. Kept as a plain timestamp range so the
--- bets(bet_date) index still serves it.
+-- close of the data cut-off.
+--
+-- The first version of this kept the original correlated subquery per player
+-- and only swapped the constant for the anchored bounds. That took the view
+-- from fast to 10,321 ms against an 8s statement_timeout and broke the VIP
+-- page in production. With "now() - 90 days" the planner had a constant it
+-- could fold into the index; with bounds arriving from a join it could not,
+-- and re-scanned the whole bets(bet_date) index -- 3,467 correlated
+-- executions, twice over, because trailing_wager is referenced more than once
+-- in the select list.
+--
+-- Rewritten as one grouped pass over the window joined to the players, which
+-- is what CLAUDE.md already prescribed for player_bet_profile: 10,321 ms ->
+-- 378 ms, same numbers to the peso.
 create or replace view player_tier_progress with (security_invoker = true) as
- WITH win AS (
+ WITH win AS MATERIALIZED (
          SELECT ((dt.d + 1)::timestamp AT TIME ZONE 'America/Santo_Domingo') AS hi,
                 ((dt.d + 1)::timestamp AT TIME ZONE 'America/Santo_Domingo') - '90 days'::interval AS lo,
                 dt.d AS d
            FROM data_through dt
-        ), wagered AS (
-         SELECT p_1.id,
-            COALESCE(( SELECT sum(COALESCE(b.stake, 0::numeric) + COALESCE(b.bonus_stake, 0::numeric)) AS sum
-                   FROM bets b
-                  WHERE b.player_key = p_1.id
-                    AND b.bet_date >= win.lo AND b.bet_date < win.hi
-                    AND bet_counts_as_wagering(b.status)), 0::numeric) AS trailing_wager
-           FROM real_players p_1 CROSS JOIN win
+        ), wagered AS MATERIALIZED (
+         SELECT b.player_key AS id,
+                sum(COALESCE(b.stake, 0::numeric) + COALESCE(b.bonus_stake, 0::numeric)) AS trailing_wager
+           FROM bets b CROSS JOIN win
+          WHERE b.bet_date >= win.lo AND b.bet_date < win.hi
+            AND b.player_key IS NOT NULL
+            AND bet_counts_as_wagering(b.status)
+          GROUP BY b.player_key
         )
  SELECT p.id, p.name, p.username, p.email,
     COALESCE(p.vip_tier, 'Prospecto'::text) AS vip_tier,
     ct.tier_order, p.registered_at, p.last_login_at,
-        CASE WHEN p.last_login_at IS NULL THEN NULL::integer
-             ELSE win.d - local_day(p.last_login_at) END AS days_since_login,
+    CASE WHEN p.last_login_at IS NULL THEN NULL::integer ELSE win.d - local_day(p.last_login_at) END AS days_since_login,
     p.first_deposit_date, p.last_deposit_date,
-        CASE WHEN p.last_deposit_date IS NULL THEN NULL::integer
-             ELSE win.d - local_day(p.last_deposit_date) END AS days_since_deposit,
+    CASE WHEN p.last_deposit_date IS NULL THEN NULL::integer ELSE win.d - local_day(p.last_deposit_date) END AS days_since_deposit,
     p.total_deposit_amount, p.total_deposit_count, p.total_ggr_sportsbook,
-    p.total_withdrawal_amount, w.trailing_wager,
+    p.total_withdrawal_amount,
+    COALESCE(w.trailing_wager, 0::numeric) AS trailing_wager,
     ct.wager_required_dop AS tier_required,
     nt.tier_name AS next_tier, nt.wager_required_dop AS next_tier_required,
-        CASE WHEN nt.tier_name IS NULL THEN NULL::numeric
-             ELSE GREATEST(nt.wager_required_dop - w.trailing_wager, 0::numeric) END AS wager_to_next,
-        CASE
-            WHEN nt.tier_name IS NULL THEN 1::numeric
-            WHEN (nt.wager_required_dop - ct.wager_required_dop) <= 0::numeric THEN 0::numeric
-            ELSE LEAST(GREATEST((w.trailing_wager - ct.wager_required_dop) / (nt.wager_required_dop - ct.wager_required_dop), 0::numeric), 1::numeric)
-        END AS progress_to_next,
+    CASE WHEN nt.tier_name IS NULL THEN NULL::numeric
+         ELSE GREATEST(nt.wager_required_dop - COALESCE(w.trailing_wager, 0::numeric), 0::numeric) END AS wager_to_next,
+    CASE WHEN nt.tier_name IS NULL THEN 1::numeric
+         WHEN (nt.wager_required_dop - ct.wager_required_dop) <= 0::numeric THEN 0::numeric
+         ELSE LEAST(GREATEST((COALESCE(w.trailing_wager, 0::numeric) - ct.wager_required_dop) / (nt.wager_required_dop - ct.wager_required_dop), 0::numeric), 1::numeric)
+    END AS progress_to_next,
     COALESCE(bp.bets, 0::bigint) AS bets,
     COALESCE(bp.total_stake, 0::numeric) AS total_stake,
     bp.avg_stake, bp.median_stake, bp.last_bet_date, bp.last_settlement_date,
-    bp.open_bets,
-    COALESCE(bp.sports_played, 0::bigint) AS sports_played,
-    bp.top_sport, bp.top_sport_share,
-    win.d AS data_through
+    bp.open_bets, COALESCE(bp.sports_played, 0::bigint) AS sports_played,
+    bp.top_sport, bp.top_sport_share, win.d AS data_through
    FROM real_players p
      CROSS JOIN win
-     JOIN wagered w ON w.id = p.id
+     LEFT JOIN wagered w ON w.id = p.id
      LEFT JOIN vip_tiers ct ON ct.tier_name = COALESCE(p.vip_tier, 'Prospecto'::text)
      LEFT JOIN LATERAL ( SELECT t.tier_name, t.wager_required_dop
            FROM vip_tiers t WHERE t.tier_order > ct.tier_order
