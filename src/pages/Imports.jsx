@@ -256,9 +256,16 @@ export default function Imports({ s, lang }) {
         // A range that overlaps one already loaded is a re-cut of the same days,
         // not new money. It is stored for reconciliation and left out of every
         // total, so uploading the month view after the weeks cannot double them.
+        // Only periods that actually count can make a new one redundant. A
+        // validation period adds to no total, so letting one block the next
+        // upload is how a month-wide file uploaded by mistake locks out every
+        // week it touches: the month lands as validation, and then the correct
+        // weekly file overlaps *it* and is demoted too, leaving the week
+        // uncovered with two successful imports behind it.
         const { data: existing, error: overlapErr } = await supabase
           .from("deposit_periods")
           .select("period_start, period_end")
+          .eq("scope", "primary")
           .lte("period_start", period.end)
           .gte("period_end", period.start)
           .limit(200);
@@ -566,7 +573,10 @@ export default function Imports({ s, lang }) {
                           </div>
                         )}
                         {state.scope === "validation" && (
-                          <div style={{ color: C.negative }}>{s.periodValidationOnly}</div>
+                          <>
+                            <div style={{ color: C.negative }}>{s.periodValidationOnly}</div>
+                            <div style={{ color: C.negative }}>{s.periodValidationFix}</div>
+                          </>
                         )}
                       </div>
                     )}
