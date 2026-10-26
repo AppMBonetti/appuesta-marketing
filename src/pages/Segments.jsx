@@ -393,6 +393,15 @@ export default function Segments({ s, lang }) {
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                       <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_COLORS[p.lifecycle] }} />
                       {s.seg.lifecycle[p.lifecycle] || p.lifecycle}
+                      {/* A banned, limited or self-excluded player is a real
+                          customer whose money counts, so they are in this list
+                          -- but nobody should be calling them. */}
+                      {p.restricted && (
+                        <span title={p.restriction_reason || s.seg.restrictedHint}
+                          style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px" }}>
+                          {s.seg.restricted}
+                        </span>
+                      )}
                       {p.has_live_hook && (
                         // The segment reflects what the player did; this flags a
                         // reason to contact them anyway — a bet the house just

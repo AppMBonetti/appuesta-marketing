@@ -375,6 +375,13 @@ function Row({ p, s, lang, td, num, isOpen, onToggle, onNotesChanged, colCount }
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <Chevron size={13} color={C.inkFaint} style={{ flexShrink: 0 }} />
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{p.username || p.name || p.id}</span>
+            {/* Counts in every figure, must not be contacted. */}
+            {p.restricted && (
+              <span title={p.restriction_reason || s.seg.restrictedHint}
+                style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px" }}>
+                {s.seg.restricted}
+              </span>
+            )}
             {p.has_live_hook && (
               <span title={s.seg.liveHookHint} style={{ color: "#D9A848", fontSize: 10.5 }}>{s.seg.liveHook}</span>
             )}

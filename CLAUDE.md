@@ -206,6 +206,39 @@ exactly what happened on 2026-10-26.
   made `count(*)` distinct by accident; across two periods it double-counts
   anyone who deposited in both halves.
 
+## A banned player's money is still money
+
+`excluded` was doing two incompatible jobs: "this account was never a customer"
+(138 disposable-email signups holding zero pesos) and "this customer is banned,
+limited or self-excluded" (15 real people, DOP 3,490,350 deposited). Both
+vanished from every figure retroactively, so a ban on the 20th rewrote the 3rd.
+
+They are now separate. `excluded` keeps only the first meaning. `restricted`
+carries the second: **counts in every financial figure, must never be
+contacted.**
+
+- The 15 withdrew 3,629,798 against 3,490,350 deposited, because the balance is
+  returned on the ban. Dropping them removed both halves of a real pair of
+  transactions, not just the deposit.
+- Doing it at the source means the ~25 views built on `real_players` pick the
+  money up on their own. Forking the view graph into "financial" and
+  "retention" copies would have touched 29 objects.
+- **Restricted players are back in every player list**, so the screens must mark
+  them — Segments and the VIP tracker show a red *Restringido* badge with the
+  reason on hover. Without that, someone calls a banned player.
+- `set_player_restricted()` mirrors `set_player_excluded()`, including the
+  EXECUTE revoke from `anon`.
+- Measured before and after: October deposits 10,209,925 → **11,902,925**
+  against the backoffice's 11,956,285 (0.45%); payouts 7,792,954 → **9,138,698**
+  against 9,214,774 (0.83%). **September net went 1,089,670 → −82,335** — not an
+  error: a banned player's withdrawals land in the month they happened, and that
+  month they exceeded what came in.
+- Still unresolved: `internal_name_patterns` matches `test,prueba,demo,qa` as a
+  **substring**, so `juliolorabaldemora@gmail.com` and `juniordemota1@gmail.com`
+  are flagged internal by the Dominican surnames Baldemora and Demota, and four
+  accounts whose random email prefix contains `qa`. Seven real players, trivial
+  money, not yet fixed.
+
 ## Balances say what a player holds, not what they were worth
 
 The player report gained `Cash Balance`, `Bonus Balance`, `Total Balance` and

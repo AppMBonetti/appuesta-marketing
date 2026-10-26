@@ -101,6 +101,8 @@ export const STRINGS = {
     seg: {
       liveHook: "en juego",
       liveHookHint: "Tiene una apuesta abierta o una que se liquidó en los últimos 3 días. El segmento mide lo que hizo el jugador; esto marca que igual hay razón para contactarlo.",
+      restricted: "Restringido",
+      restrictedHint: "Baneado, limitado o auto-excluido. Su dinero cuenta en todas las cifras — depositó pesos de verdad y al banearlo se le devolvió el balance — pero no hay que contactarlo.",
       title: "Segmentos de jugadores", sub: "Ciclo de vida, comportamiento de apuesta y micro-segmentos accionables",
       lifecycle: {
         Registered: "Registrado", New: "Nuevo", Active: "Activo", Casual: "Ocasional",
@@ -535,6 +537,8 @@ export const STRINGS = {
     seg: {
       liveHook: "live",
       liveHookHint: "Has an open bet, or one the house settled in the last 3 days. The segment measures what the player did; this flags that there is a reason to reach out anyway.",
+      restricted: "Restricted",
+      restrictedHint: "Banned, limited or self-excluded. Their money counts in every figure — they deposited real pesos and the balance was returned on the ban — but they must not be contacted.",
       title: "Player segments", sub: "Lifecycle, betting behaviour and actionable micro-segments",
       lifecycle: {
         Registered: "Registered", New: "New", Active: "Active", Casual: "Casual",
