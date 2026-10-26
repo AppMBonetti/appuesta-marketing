@@ -18,6 +18,10 @@ const SORT_COLUMNS = [
   { key: "tier", kind: "text", label: s => s.seg.cols.tier, value: p => p.vip_tier },
   { key: "deposits", label: s => s.seg.cols.deposits, value: p => p.deposits },
   { key: "depositCount", label: s => s.seg.cols.depositCount, value: p => p.deposit_count },
+  // Sits beside deposits on purpose: those say what a player has been worth,
+  // this says what is still in the account, which is what decides how hard to
+  // chase someone who has gone quiet.
+  { key: "balance", label: s => s.seg.cols.balance, value: p => p.total_balance },
   { key: "ggr", label: s => s.seg.cols.ggr, value: p => p.ggr },
   { key: "bets", label: s => s.seg.cols.bets, value: p => p.bets },
   { key: "stake", label: s => s.seg.cols.stake, value: p => p.total_stake },
@@ -84,6 +88,10 @@ const CSV_COLUMNS = [
   { label: "days_inactive", value: p => p.days_inactive },
   { label: "total_deposited_dop", value: p => p.deposits },
   { label: "deposit_count", value: p => p.deposit_count },
+  { label: "cash_balance_dop", value: p => p.cash_balance },
+  { label: "bonus_balance_dop", value: p => p.bonus_balance },
+  { label: "total_balance_dop", value: p => p.total_balance },
+  { label: "wallet_updated_at", value: p => p.wallet_updated_at },
   { label: "total_ggr_dop", value: p => p.ggr },
   { label: "bets", value: p => p.bets },
   { label: "total_stake_dop", value: p => p.total_stake },
@@ -398,6 +406,14 @@ export default function Segments({ s, lang }) {
                   <td style={{ ...td, color: C.inkDim }}>{p.vip_tier || "—"}</td>
                   <td style={td}>{fmtDOP(p.deposits)}</td>
                   <td style={{ ...td, color: C.inkDim }}>{p.deposit_count}</td>
+                  <td style={{ ...td, color: Number(p.total_balance) > 0 ? C.positive : C.inkDim }}>
+                    {p.total_balance == null ? "—" : fmtDOP(p.total_balance)}
+                    {Number(p.bonus_balance) > 0 && (
+                      <span style={{ color: C.inkFaint, fontSize: 11, marginLeft: 5 }}>
+                        {s.vipTrack.bonusOf.replace("{amt}", fmtDOP(p.bonus_balance))}
+                      </span>
+                    )}
+                  </td>
                   <td style={td}>{fmtDOP(p.ggr)}</td>
                   <td style={{ ...td, color: C.inkDim }}>{p.bets ?? 0}</td>
                   <td style={td}>{fmtDOP(p.total_stake)}</td>

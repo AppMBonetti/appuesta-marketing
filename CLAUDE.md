@@ -170,6 +170,36 @@ above their tier floor daily on unchanged data.
 Once reports arrive daily the anchor sits a day behind today and these numbers
 converge on what the old form gave; nothing needs undoing.
 
+## Balances say what a player holds, not what they were worth
+
+The player report gained `Cash Balance`, `Bonus Balance`, `Total Balance` and
+`Wallet Last Updated UTC` in the week of 2026-10-19. Every other figure on this
+dashboard is cumulative — what someone has deposited, wagered, lost. These are
+the only ones that say what is in the account right now, which is what decides
+how hard to chase a player who has gone quiet.
+
+- **`wallet_updated_at` is per player, not the report's timestamp.** Values in
+  the first file ran from 2025-12-05 to the morning it was generated. It is when
+  that wallet last moved, so it can be months older than the import and is a
+  recency signal of its own. `days_since_wallet` anchors to `data_through` like
+  every other day counter here.
+- **The bonus share is not the player's money.** Several of the largest balances
+  are mostly a 50,000 promotional bonus, so the screens show the split rather
+  than one number — a balance that is all bonus means something quite different
+  from one that is all cash.
+- **`total_balance` is stored as given, not derived.** Cash + bonus equalled
+  total in all 4,403 rows of the first file. The importer counts disagreements
+  and the import screen shows them, so a change in what the export means by
+  "Total" surfaces instead of being recomputed away.
+- The columns flow `players → real_players → player_lifecycle / player_directory`.
+  `real_players` lists its columns one by one, so a new column on `players` does
+  **not** reach the screens on its own.
+- **A balance column that is still empty makes a timing meaningless.** Measuring
+  `player_directory` before any file was imported gave 4.6 ms, because every
+  `wallet_updated_at` was null, so the `CASE` never reached `dt.d` and the
+  `data_through` aggregates read `never executed` — the `count(*)` trap again,
+  in a new disguise. Re-time it once real balances are loaded.
+
 ## Claude Code settings are committed, because the container is not
 
 `.claude/settings.json` sets `permissions.defaultMode` to `bypassPermissions`, so

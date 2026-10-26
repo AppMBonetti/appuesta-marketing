@@ -31,6 +31,17 @@ const HEADER_MAP = {
   "sports bonus bets": "sports_bonus_bets",
   "sports bonus wins": "sports_bonus_wins",
   "bonus to cash": "bonus_to_cash",
+  // Added to the export in the week of 2026-10-19. What a player is holding
+  // right now, which no other figure here answers: every other total says what
+  // they have been worth, not what is still in the account.
+  "cash balance": "cash_balance",
+  "bonus balance": "bonus_balance",
+  "total balance": "total_balance",
+  // Per player, not the report's own timestamp -- the files seen so far carry
+  // values from months back to the morning they were generated, so this is when
+  // that wallet last moved.
+  "wallet last updated utc": "wallet_updated_at",
+  "wallet last updated": "wallet_updated_at",
 };
 
 const REQUIRED_FIELDS = ["id", "registered_at"];
@@ -70,6 +81,13 @@ export async function parsePlayerReportFile(file) {
   let depositors = 0;
   let ftdKnown = 0;
   let ftdDateMissing = 0;
+  let balanceHolders = 0;
+  let balanceHeld = 0;
+  // Cash + bonus equalled total in all 4,403 rows of the first file to carry
+  // these columns. Counted rather than assumed: if the export ever changes what
+  // Total means, that should surface on the import screen rather than being
+  // quietly papered over by recomputing it here.
+  let balanceMismatches = 0;
 
   for (const r of rows) {
     const id = toIdText(r.id);
@@ -104,6 +122,17 @@ export async function parsePlayerReportFile(file) {
       else ftdDateMissing += 1;
     }
 
+    const cashBalance = toNumber(r.cash_balance);
+    const bonusBalance = toNumber(r.bonus_balance);
+    const totalBalance = toNumber(r.total_balance);
+    if (totalBalance != null) {
+      if (totalBalance > 0) { balanceHolders += 1; balanceHeld += totalBalance; }
+      if (cashBalance != null && bonusBalance != null
+          && Math.abs(cashBalance + bonusBalance - totalBalance) > 0.01) {
+        balanceMismatches += 1;
+      }
+    }
+
     byId.set(id, {
       id,
       username: toText(r.username),
@@ -131,6 +160,10 @@ export async function parsePlayerReportFile(file) {
       sports_bonus_bets: toNumber(r.sports_bonus_bets),
       sports_bonus_wins: toNumber(r.sports_bonus_wins),
       bonus_to_cash: toNumber(r.bonus_to_cash),
+      cash_balance: cashBalance,
+      bonus_balance: bonusBalance,
+      total_balance: totalBalance,
+      wallet_updated_at: toISOTimestamp(r.wallet_updated_at, PLAYER_REPORT_TIMEZONE),
       imported_at: now,
     });
   }
@@ -140,7 +173,7 @@ export async function parsePlayerReportFile(file) {
     unmatchedHeaders,
     unexpectedCurrencies: [...currencies].filter(c => c !== EXPECTED_CURRENCY),
     expectedCurrency: EXPECTED_CURRENCY,
-    summary: { depositors, ftdKnown, ftdDateMissing },
+    summary: { depositors, ftdKnown, ftdDateMissing, balanceHolders, balanceHeld, balanceMismatches },
     // `end` is the newest thing the file knows about, not the range in its
     // filename — a report labelled as last week's can stop days earlier, and
     // that gap is what makes login and deposit recency stale.
