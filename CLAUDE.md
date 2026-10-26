@@ -170,6 +170,42 @@ above their tier floor daily on unchanged data.
 Once reports arrive daily the anchor sits a day behind today and these numbers
 converge on what the old form gave; nothing needs undoing.
 
+## The payments report's period is its *Created date* filter
+
+`deposit_periods` is keyed by the range on the report's `Properties` sheet
+("Date range"), and that line reflects only the backoffice's **Created date**
+filter. A Completed date filter appears nowhere in the file — not in the header,
+not in the rows, which are one aggregate per player with no dates at all.
+
+So a report pulled with Created date = the whole month and Completed date = one
+week arrives claiming to cover the month. It overlaps the weeks already loaded,
+is parked as `validation`, and the week it actually holds stays empty. That is
+exactly what happened on 2026-10-26.
+
+- **Every week loaded so far is on the created-date basis.** Switching to
+  completed-date is defensible — a deposit created on the 18th and completed on
+  the 20th is money that arrived on the 20th — but it cannot be done for one
+  week only, or week-on-week comparisons mix two definitions. It needs every
+  week re-pulled, and a way to declare the range on upload, since the file
+  cannot state it.
+- A `validation` period counts toward nothing, so it must never block the next
+  upload. It used to: the overlap check looked at every stored period, so one
+  month-wide file locked out every week it touched, each correct weekly file
+  being demoted in turn. The check now considers `scope = 'primary'` only.
+- **A month-straddling week has to be split**, or its days outside the month are
+  attributed to nothing: 28/09–04/10 put four days of October into neither
+  month. Upload the two halves (28/09–30/09 and 01/10–04/10); both land as
+  validation, and `reconcile_deposit_period_scopes()` then sees they tile the
+  straddling week exactly, demotes it and promotes both halves.
+- **`deposits_weekly` reports a week when its primary periods cover all seven
+  days**, not when one period runs Monday to Sunday. The exact-week form made
+  splitting a week erase it from the weekly grid. The split week of 2026-09-28
+  reassembles from 3 days plus 4 to exactly what the single period gave: 449
+  deposits, DOP 1,183,680, 199 depositors.
+- `depositors` there counts **distinct** players. One row per player per period
+  made `count(*)` distinct by accident; across two periods it double-counts
+  anyone who deposited in both halves.
+
 ## Balances say what a player holds, not what they were worth
 
 The player report gained `Cash Balance`, `Bonus Balance`, `Total Balance` and
@@ -198,7 +234,13 @@ how hard to chase a player who has gone quiet.
   `player_directory` before any file was imported gave 4.6 ms, because every
   `wallet_updated_at` was null, so the `CASE` never reached `dt.d` and the
   `data_through` aggregates read `never executed` — the `count(*)` trap again,
-  in a new disguise. Re-time it once real balances are loaded.
+  in a new disguise. Re-timed with real balances loaded: **18.3 ms**, with those
+  aggregates actually executing.
+- **New columns only arrive if the import ran on code that knows about them.**
+  The 2026-10-19 report was uploaded four minutes before the deploy that added
+  the balance mapping, so all 4,403 players came in with the four columns null
+  and nothing looked wrong — the import reported success. After re-uploading the
+  same file: 580 holders, DOP 1,157,145, matching the workbook exactly.
 
 ## Claude Code settings are committed, because the container is not
 
