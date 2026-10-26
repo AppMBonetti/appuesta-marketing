@@ -170,6 +170,26 @@ above their tier floor daily on unchanged data.
 Once reports arrive daily the anchor sits a day behind today and these numbers
 converge on what the old form gave; nothing needs undoing.
 
+## Claude Code settings are committed, because the container is not
+
+`.claude/settings.json` sets `permissions.defaultMode` to `bypassPermissions`, so
+a session acts without stopping to ask. It is **checked in on purpose**.
+
+The same setting was first written to `.claude/settings.local.json`, which
+`.gitignore` excludes. That works on a laptop and not here: a cloud session runs
+in a fresh container that clones the repo from GitHub, so anything not committed
+does not exist when the session starts. The whole `.claude/` directory was simply
+gone at the next session, and the prompts came back.
+
+- It only takes effect for a session whose **checkout already contains it**.
+  Settings are read at startup, so adding or changing the file mid-session does
+  nothing until the next one — and it has to be on the branch that session starts
+  from, which is usually `main`.
+- It applies to **anyone** who opens this repo in Claude Code, not just Marcos.
+- `.claude/settings.local.json` stays gitignored, for per-person overrides. It
+  loads after this file and wins, so that is where to put a narrower mode for
+  yourself without changing it for everybody.
+
 ## Hand-typed data is the one kind we cannot re-import
 
 Everything else in this database comes from a weekly report and can be rebuilt
