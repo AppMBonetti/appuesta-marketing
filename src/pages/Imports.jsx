@@ -532,6 +532,21 @@ export default function Imports({ s, lang }) {
                             {s.ftdDateMissing.replace("{n}", state.summary.ftdDateMissing.toLocaleString())}
                           </div>
                         )}
+                        {state.summary.balanceHolders != null && (
+                          <div>
+                            {s.balancesLoaded
+                              .replace("{n}", state.summary.balanceHolders.toLocaleString())
+                              .replace("{amt}", fmtDOP(state.summary.balanceHeld))}
+                          </div>
+                        )}
+                        {/* Silent until it happens, because it never has: a file
+                            where cash + bonus stops adding up to total means the
+                            export changed what Total means. */}
+                        {state.summary.balanceMismatches > 0 && (
+                          <div style={{ color: C.negative }}>
+                            {s.balanceMismatch.replace("{n}", state.summary.balanceMismatches.toLocaleString())}
+                          </div>
+                        )}
                       </div>
                     )}
                     {state.period && state.summary?.players != null && (

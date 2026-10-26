@@ -54,6 +54,10 @@ const CSV_COLUMNS = [
   { label: "withdrawn_dop", value: p => p.withdrawn },
   { label: "withdrawal_count", value: p => p.total_withdrawal_count },
   { label: "net_dop", value: p => p.net },
+  { label: "cash_balance_dop", value: p => p.cash_balance },
+  { label: "bonus_balance_dop", value: p => p.bonus_balance },
+  { label: "total_balance_dop", value: p => p.total_balance },
+  { label: "wallet_updated_at", value: p => p.wallet_updated_at },
   { label: "ggr_dop", value: p => p.ggr },
   { label: "cashback_dop", value: p => p.cashback },
   { label: "bonus_to_cash_dop", value: p => p.bonus_to_cash },
@@ -153,6 +157,9 @@ const SORT_COLUMNS = [
   { key: "deposited", align: "right", label: s => s.vipTrack.cols.deposited, value: p => p.deposits },
   { key: "withdrawn", align: "right", label: s => s.vipTrack.cols.withdrawn, value: p => p.withdrawn },
   { key: "net", align: "right", label: s => s.vipTrack.cols.net, value: p => p.net },
+  // What they are holding right now, as opposed to what they have been worth.
+  // A player sitting on a balance did not go quiet because they ran out.
+  { key: "balance", align: "right", label: s => s.vipTrack.cols.balance, value: p => p.total_balance },
   { key: "ggr", align: "right", label: s => s.vipTrack.cols.ggr, value: p => p.ggr },
   { key: "sports", kind: "text", label: s => s.vipTrack.cols.sports, value: p => p.top_sport },
   { key: "cushion", align: "right", label: s => s.vipTrack.cols.cushion, value: p => p.cushion },
@@ -409,6 +416,17 @@ function Row({ p, s, lang, td, num, isOpen, onToggle, onNotesChanged, colCount }
         </td>
         {/* Net is the one that says what a player is actually worth. */}
         <td style={{ ...td, ...num, fontWeight: 600, color: Number(p.net) < 0 ? C.negative : C.ink }}>{fmtDOP(p.net)}</td>
+        {/* The bonus share is called out because it is not the player's money
+            to walk away with, and a balance that is mostly bonus says something
+            very different about whether they need chasing. */}
+        <td style={{ ...td, ...num, color: Number(p.total_balance) > 0 ? C.positive : C.inkDim }}>
+          {p.total_balance == null ? "—" : fmtDOP(p.total_balance)}
+          {Number(p.bonus_balance) > 0 && (
+            <div style={{ fontSize: 11, color: C.inkFaint }}>
+              {s.vipTrack.bonusOf.replace("{amt}", fmtDOP(p.bonus_balance))}
+            </div>
+          )}
+        </td>
         <td style={{ ...td, ...num, color: Number(p.ggr) < 0 ? C.negative : C.ink }}>{fmtDOP(p.ggr)}</td>
         <td style={td}>
           {top
@@ -468,6 +486,16 @@ function Detail({ p, s, lang, onNotesChanged }) {
         <Field label={d.cashback} value={fmtDOP(p.cashback)} />
         <Field label={d.bonusToCash} value={p.bonus_to_cash == null ? null : fmtDOP(p.bonus_to_cash)} />
       </div>
+
+      <div style={heading}>{d.balance}</div>
+      <div style={grid}>
+        <Field label={d.cashBalance} value={p.cash_balance == null ? null : fmtDOP(p.cash_balance)}
+          tone={Number(p.cash_balance) > 0 ? C.positive : null} />
+        <Field label={d.bonusBalance} value={p.bonus_balance == null ? null : fmtDOP(p.bonus_balance)} />
+        <Field label={d.totalBalance} value={p.total_balance == null ? null : fmtDOP(p.total_balance)} />
+        <Field label={d.walletUpdated} value={fmtDay(p.wallet_updated_at, lang)} />
+      </div>
+      <p style={{ fontSize: 11, color: C.inkFaint, margin: "8px 0 0", maxWidth: 560 }}>{d.balanceNote}</p>
 
       <div style={heading}>{d.betting}</div>
       <div style={grid}>
