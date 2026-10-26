@@ -1,4 +1,6 @@
-import { weekStartOf } from "./period";
+// Extension included so the build's verifier can import this file under plain
+// Node, the way scripts/verify-sort.mjs already imports sortRows.js.
+import { weekStartOf, addDays } from "./period.js";
 
 /**
  * `players` only ever holds current cumulative totals, so a per-week figure is
@@ -40,16 +42,44 @@ export function aggregateByChannel(rows) {
     .sort((a, b) => b.sessions - a.sessions);
 }
 
-/** Daily sessions pivoted into one series per channel, for the stacked area chart. */
-export function pivotSessionsByDate(rows) {
-  const dates = [...new Set(rows.map(r => r.date))].sort();
+/**
+ * Sessions pivoted into one series per channel, bucketed by day or by week.
+ *
+ * A week is labelled by its Monday, the same boundary `weekly_kpis` uses, so a
+ * traffic week is the same seven days as a KPI week rather than a different
+ * seven with the same name.
+ *
+ * `range` is the selected period, end exclusive, and it is what decides whether
+ * a week is complete — not how many days of it carry rows. GA4 writes nothing
+ * for a channel on a day it saw no sessions, so counting the days present would
+ * call a quiet week a partial one. The last week of any range is almost always
+ * incomplete, and an incomplete week drawn at full height reads as traffic
+ * falling off a cliff, so the caller is told which buckets to mark.
+ */
+export function pivotSessions(rows, grain = "day", range = null) {
+  const bucketOf = grain === "week" ? weekStartOf : (d => String(d).slice(0, 10));
   const channels = [...new Set(rows.map(r => r.channel))];
-  const byKey = new Map(rows.map(r => [`${r.date}|${r.channel}`, r.sessions || 0]));
-  return dates.map(date => {
-    const row = { date };
-    channels.forEach(ch => { row[ch] = byKey.get(`${date}|${ch}`) || 0; });
-    return row;
-  });
+  const buckets = new Map();
+
+  for (const r of rows) {
+    const key = bucketOf(r.date);
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { date: key };
+      channels.forEach(ch => { bucket[ch] = 0; });
+      buckets.set(key, bucket);
+    }
+    bucket[r.channel] = (bucket[r.channel] || 0) + (r.sessions || 0);
+  }
+
+  const isPartial = key => {
+    if (grain !== "week" || !range?.start || !range?.end) return false;
+    return key < range.start || addDays(key, 6) >= range.end;
+  };
+
+  return [...buckets.values()]
+    .sort((a, b) => (a.date < b.date ? -1 : 1))
+    .map(bucket => ({ ...bucket, partial: isPartial(bucket.date) }));
 }
 
 const ratio = (numerator, denominator) =>

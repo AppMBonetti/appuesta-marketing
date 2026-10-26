@@ -9,7 +9,7 @@ import {
   getPeriodRange, monthOptions, currentBudgetMonth, formatMonth,
   weeksInMonth, previousWeek, weekStartOf,
 } from "../lib/period";
-import { aggregateByChannel, pivotSessionsByDate, deriveWeeklyKpis } from "../lib/metrics";
+import { aggregateByChannel, pivotSessions, deriveWeeklyKpis } from "../lib/metrics";
 import { SectionHeading, Panel, PeriodBar, Spinner, KpiCard, fmtDOP, deltaOf, EmptyState } from "../components/ui";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "../components/SortHeader";
@@ -44,6 +44,7 @@ export default function Acquisition({ s, lang }) {
   const [ga4PrevRows, setGa4PrevRows] = useState([]);
   const [social, setSocial] = useState([]);
   const [ga4View, setGa4View] = useState("stacked");
+  const [grain, setGrain] = useState("day");
 
   const [month, setMonth] = useState(currentBudgetMonth());
   const [weeklyRows, setWeeklyRows] = useState([]);
@@ -117,7 +118,11 @@ export default function Acquisition({ s, lang }) {
 
   const ga4Current = aggregateByChannel(ga4Rows);
   const ga4Previous = aggregateByChannel(ga4PrevRows);
-  const sessionsSeries = pivotSessionsByDate(ga4Rows);
+  // getPeriodRange is pure, so recomputing it here rather than hoisting it out
+  // of the fetch effect keeps the effect's dependencies honest.
+  const ga4Range = getPeriodRange(period, customStart, customEnd).current;
+  const sessionsSeries = pivotSessions(ga4Rows, grain, ga4Range);
+  const partialKeys = new Set(sessionsSeries.filter(b => b.partial).map(b => b.date));
   const ga4Channels = ga4Current.map(c => c.channel);
   const totalSessions = ga4Current.reduce((sum, c) => sum + c.sessions, 0);
   const totalUsers = ga4Current.reduce((sum, c) => sum + c.active_users, 0);
@@ -205,7 +210,12 @@ export default function Acquisition({ s, lang }) {
                 <KpiCard icon={Target} label={s.ga4Kpi.conversions} value={totalConversions.toLocaleString()} />
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 10 }}>
+                <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
+                  {[["day", s.ga4Grain.day], ["week", s.ga4Grain.week]].map(([v, label]) => (
+                    <button key={v} onClick={() => setGrain(v)} style={{ padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, background: grain === v ? C.accent : "transparent", color: grain === v ? "#fff" : C.inkDim }}>{label}</button>
+                  ))}
+                </div>
                 <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
                   {[["stacked", s.ga4Stacked], ["total", s.ga4Total]].map(([v, label]) => (
                     <button key={v} onClick={() => setGa4View(v)} style={{ padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, background: ga4View === v ? C.accent : "transparent", color: ga4View === v ? "#fff" : C.inkDim }}>{label}</button>
@@ -217,9 +227,13 @@ export default function Acquisition({ s, lang }) {
                 <ResponsiveContainer width="100%" height={230}>
                   <AreaChart data={sessionsSeries}>
                     <CartesianGrid strokeDasharray="3 3" stroke={C.panelBorder} vertical={false} />
-                    <XAxis dataKey="date" {...axis} />
+                    <XAxis dataKey="date" {...axis}
+                      tickFormatter={v => (partialKeys.has(v) ? `${v} *` : v)} />
                     <YAxis {...axis} />
-                    <Tooltip {...tooltip} />
+                    <Tooltip {...tooltip}
+                      labelFormatter={v => (grain === "week"
+                        ? `${s.ga4Grain.weekOf} ${v}${partialKeys.has(v) ? ` · ${s.ga4Grain.partialShort}` : ""}`
+                        : v)} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     {ga4View === "stacked"
                       ? ga4Channels.map((ch, i) => (
@@ -229,6 +243,17 @@ export default function Acquisition({ s, lang }) {
                   </AreaChart>
                 </ResponsiveContainer>
               </Panel>
+
+              {/* A week cut short by the edge of the selected range is drawn at
+                  its real height, which looks like traffic collapsing. Say so
+                  rather than quietly reshaping the chart. */}
+              {grain === "week" && (
+                <p style={{ color: C.inkFaint, fontSize: 11.5, margin: "-6px 0 16px", maxWidth: 760, lineHeight: 1.6 }}>
+                  {sessionsSeries.length < 2
+                    ? s.ga4Grain.needLongerRange
+                    : partialKeys.size > 0 ? s.ga4Grain.partialNote : s.ga4Grain.weekNote}
+                </p>
+              )}
 
               <Panel style={{ padding: 4, overflow: "auto", marginBottom: 16 }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
