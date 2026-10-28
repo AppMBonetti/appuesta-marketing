@@ -78,6 +78,38 @@ Two traps in that measurement itself:
   named `top_sport`, because the sport-legs CTE showed `never executed`. Name
   the expensive columns: `select count(*), count(top_sport) from <view>`.
 
+## The sport legs are a cache now, not a computation
+
+`player_bet_profile` unnested the sport string of every bet on every read —
+`cross join lateral unnest(string_to_array(b.sport, chr(10)))`. 42,593 wagering
+bets expand to ~87,000 legs and then two HashAggregates, and the plan showed
+42,593 Memoize loops over that Function Scan. Measured as `authenticated`, one
+page of Segments (1,000 players ordered by deposits):
+
+| | |
+|---|---|
+| naming no sport column | 13 ms — the CTE reads `never executed` |
+| naming `top_sport` | **4,627 ms** |
+| after the cache | **337 ms** |
+
+Segments pages through the whole list, so that was five pages, ~23 s in all,
+against an 8 s `statement_timeout`. It had been fine at 33,522 bets; the week of
+19–25 October took the table past where the shape could carry it.
+
+- `player_sport_counts` holds distinct bets per player per sport, rebuilt by
+  `refresh_player_sport_counts()` at the end of the Altenar import, beside
+  `refresh_player_ggr()`. **Nothing else keeps it current** — if a future import
+  path writes `bets` without calling it, `top_sport` goes quietly stale.
+- **A real table, not a materialized view.** A matview has no RLS, and anything
+  readable by `authenticated` is readable by the affiliate portal's users too.
+  This stays behind `is_team_member()` like everything else.
+- Checked against the view it replaced *before* switching: across all 4,403
+  players, `top_sport`, `sports_played` and `top_sport_share` matched with zero
+  differences.
+- The `count(*)` trap bit twice here. The first measurement after the fix read
+  173 ms because `count(*)` let the planner skip the sport joins entirely; the
+  honest figure, with every sport column named, is 337 ms.
+
 ## RLS — the same inlining trap, one level down
 
 `is_team_member()` is `STABLE SECURITY DEFINER` with a `SET` clause, so it has

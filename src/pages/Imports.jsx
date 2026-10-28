@@ -429,6 +429,12 @@ export default function Imports({ s, lang }) {
         // refreshed here rather than waiting for a player export to restate it.
         const { error: ggrErr } = await supabase.rpc("refresh_player_ggr");
         if (ggrErr) throw ggrErr;
+        // The per-sport bet counts are a cache over the bets just loaded. They
+        // are rebuilt here because nothing else can: read on demand instead,
+        // the sport string of every bet has to be unnested on every page load,
+        // which is what put Segments at 4.6 s a page and into the 8 s timeout.
+        const { error: sportErr } = await supabase.rpc("refresh_player_sport_counts");
+        if (sportErr) throw sportErr;
         const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
         if (rpcErr) throw rpcErr;
 
