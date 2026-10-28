@@ -4,7 +4,10 @@ import {
 } from "recharts";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
-import { formatWeek, addDays, dateRangeLabel, formatMonth, monthOfWeek } from "../lib/period";
+import {
+  formatWeek, addDays, dateRangeLabel, formatMonth, monthOfWeek,
+  daysBetween, clampToCoverage, matchPriorLength,
+} from "../lib/period";
 import { deriveWeeklyKpis, wowChange, aggregateWeeklyRows } from "../lib/metrics";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
 import { fmtMoney } from "../lib/currency";
@@ -137,16 +140,24 @@ export default function Overview({ s, lang }) {
     let active = true;
     setRangeBusy(true);
     (async () => {
-      const prior = priorRangeFor(mode, range);
-      const days = Math.round((new Date(range.end) - new Date(range.start)) / 86400000) + 1;
+      // The last day the data covers, so a month still in progress is not
+      // measured against a month that finished.
+      const { data: dt } = await supabase.from("data_through").select("d").maybeSingle();
+      const through = dt?.d || null;
+      const covered = clampToCoverage(range, through);
+      const days = daysBetween(covered.start, covered.end);
+      const prior = matchPriorLength(priorRangeFor(mode, range), days);
       const [now, before] = await Promise.all([
-        supabase.rpc("kpis_for_range", { p_start: range.start, p_end: range.end }),
+        supabase.rpc("kpis_for_range", { p_start: covered.start, p_end: covered.end }),
         supabase.rpc("kpis_for_range", { p_start: prior.start, p_end: prior.end }),
       ]);
       if (!active) return;
       if (now.error) setError(now.error.message);
       const first = res => (Array.isArray(res.data) ? res.data[0] || null : res.data);
-      setRangeRow({ current: first(now), prior: before.error ? null : first(before), days, range });
+      setRangeRow({
+        current: first(now), prior: before.error ? null : first(before),
+        days, range: covered, prior_range: prior, clamped: covered.clamped === true,
+      });
       setRangeBusy(false);
     })();
     return () => { active = false; };
@@ -199,6 +210,7 @@ export default function Overview({ s, lang }) {
   // from, and spend is captured per week so it is split across that week's days.
   const rangeCaveats = exactRange
     ? [
+        rangeRow.clamped ? s.ov.clampedToData : null,
         rangeRow.current.deposit_amount == null ? s.ov.noDepositBaseline : null,
         rangeRow.current.spend_prorated ? s.ov.spendProrated : null,
       ].filter(Boolean)
@@ -264,7 +276,13 @@ export default function Overview({ s, lang }) {
         <span style={{ fontSize: 12, color: C.inkFaint }}>
           {rangeBusy ? <Spinner size={13} />
             : exactRange
-              ? (rangeRow.prior ? s.ov.comparedToDays.replace("{n}", String(rangeRow.days)) : s.ov.noPriorPeriod)
+              ? (rangeRow.prior
+                  // Naming the span beats "the previous N days": while a month
+                  // is still running the comparison is month-to-date against
+                  // the same days of the month before, and that has to be
+                  // readable off the screen rather than inferred.
+                  ? s.ov.comparedToRange.replace("{r}", dateRangeLabel(rangeRow.prior_range.start, rangeRow.prior_range.end, lang))
+                  : s.ov.noPriorPeriod)
               : priorWeeks.length
                 ? (shown.length === 1 ? s.ov.comparedToWeek : s.ov.comparedTo.replace("{n}", String(priorWeeks.length)))
                 : s.ov.noPriorPeriod}

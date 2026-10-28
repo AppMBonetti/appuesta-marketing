@@ -206,6 +206,35 @@ exactly what happened on 2026-10-26.
   made `count(*)` distinct by accident; across two periods it double-counts
   anyone who deposited in both halves.
 
+## A month still running is compared against the same days, not a whole month
+
+The current month runs to the 31st on the calendar and to the 25th in the
+database, because the reports land weekly. The Overview asked `kpis_for_range`
+for the whole month and compared it against a whole previous month — 25 days of
+numerator over 30 days of denominator — so every growth figure came out short.
+
+| October 1–25 vs | registrations | FTDs |
+|---|---|---|
+| all of September (what it showed) | +165% | +196% |
+| September 1–25 (like for like) | **+254%** | **+408%** |
+
+Nothing looked wrong: both figures were real, the arithmetic was right, and
+only the windows disagreed. Marcos caught it from memory — "we had ~900 reg in
+sept, october is not 165%".
+
+- `clampToCoverage()` trims the range at `data_through`, `matchPriorLength()`
+  cuts the prior span to the same number of days **from its own start** — month
+  to date against the same days of the month before.
+- It corrects in both directions. GGR went **down**, +383% → +296%, because
+  26–30 September had negative GGR, so the full month was worth less than its
+  first 25 days.
+- The label names the span it compares against (`vs. 1 sep – 25 sep 2026`)
+  rather than saying "the previous N days", which is unreadable once the window
+  is not a whole month.
+- `scripts/verify-period-compare.mjs` guards it in the build. Confirmed it
+  fails: removing the clamp breaks four of its nine cases. A finished month must
+  stay untouched, or every historical comparison shifts.
+
 ## A banned player's money is still money
 
 `excluded` was doing two incompatible jobs: "this account was never a customer"

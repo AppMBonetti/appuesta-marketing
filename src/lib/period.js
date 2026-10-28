@@ -61,6 +61,35 @@ export function weekStartOf(dateStr) {
   return dt.toISOString().slice(0, 10);
 }
 
+export const daysBetween = (start, end) =>
+  Math.round((new Date(`${end}T00:00:00Z`) - new Date(`${start}T00:00:00Z`)) / 86400000) + 1;
+
+/**
+ * Trims a range at the last day the data actually covers.
+ *
+ * The current month runs to the 31st on the calendar and to the 25th in the
+ * database, because the reports land weekly. Asking for the whole month and
+ * comparing it against a whole previous month puts 25 days of numerator over
+ * 30 days of denominator, and every growth figure comes out short — October
+ * read +165% on registrations where the honest like-for-like is +254%, and
+ * +196% on FTDs where it is +408%.
+ */
+export function clampToCoverage(range, through) {
+  if (!range || !through) return range;
+  return range.end > through ? { start: range.start, end: through, clamped: true } : range;
+}
+
+/**
+ * The prior span cut to the same number of days, counted from its own start —
+ * month-to-date against the same days of the month before, which is what
+ * "versus last month" means while a month is still running.
+ */
+export function matchPriorLength(prior, days) {
+  if (!prior || !days) return prior;
+  const end = addDays(prior.start, days - 1);
+  return end < prior.end ? { start: prior.start, end } : prior;
+}
+
 /** Budgets are tracked from August 2026 onward — nothing earlier was planned in this tool. */
 export const BUDGET_START_MONTH = "2026-08-01";
 
