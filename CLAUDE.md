@@ -78,6 +78,38 @@ Two traps in that measurement itself:
   named `top_sport`, because the sport-legs CTE showed `never executed`. Name
   the expensive columns: `select count(*), count(top_sport) from <view>`.
 
+## The sport legs are a cache now, not a computation
+
+`player_bet_profile` unnested the sport string of every bet on every read —
+`cross join lateral unnest(string_to_array(b.sport, chr(10)))`. 42,593 wagering
+bets expand to ~87,000 legs and then two HashAggregates, and the plan showed
+42,593 Memoize loops over that Function Scan. Measured as `authenticated`, one
+page of Segments (1,000 players ordered by deposits):
+
+| | |
+|---|---|
+| naming no sport column | 13 ms — the CTE reads `never executed` |
+| naming `top_sport` | **4,627 ms** |
+| after the cache | **337 ms** |
+
+Segments pages through the whole list, so that was five pages, ~23 s in all,
+against an 8 s `statement_timeout`. It had been fine at 33,522 bets; the week of
+19–25 October took the table past where the shape could carry it.
+
+- `player_sport_counts` holds distinct bets per player per sport, rebuilt by
+  `refresh_player_sport_counts()` at the end of the Altenar import, beside
+  `refresh_player_ggr()`. **Nothing else keeps it current** — if a future import
+  path writes `bets` without calling it, `top_sport` goes quietly stale.
+- **A real table, not a materialized view.** A matview has no RLS, and anything
+  readable by `authenticated` is readable by the affiliate portal's users too.
+  This stays behind `is_team_member()` like everything else.
+- Checked against the view it replaced *before* switching: across all 4,403
+  players, `top_sport`, `sports_played` and `top_sport_share` matched with zero
+  differences.
+- The `count(*)` trap bit twice here. The first measurement after the fix read
+  173 ms because `count(*)` let the planner skip the sport joins entirely; the
+  honest figure, with every sport column named, is 337 ms.
+
 ## RLS — the same inlining trap, one level down
 
 `is_team_member()` is `STABLE SECURITY DEFINER` with a `SET` clause, so it has
@@ -205,6 +237,35 @@ exactly what happened on 2026-10-26.
 - `depositors` there counts **distinct** players. One row per player per period
   made `count(*)` distinct by accident; across two periods it double-counts
   anyone who deposited in both halves.
+
+## A month still running is compared against the same days, not a whole month
+
+The current month runs to the 31st on the calendar and to the 25th in the
+database, because the reports land weekly. The Overview asked `kpis_for_range`
+for the whole month and compared it against a whole previous month — 25 days of
+numerator over 30 days of denominator — so every growth figure came out short.
+
+| October 1–25 vs | registrations | FTDs |
+|---|---|---|
+| all of September (what it showed) | +165% | +196% |
+| September 1–25 (like for like) | **+254%** | **+408%** |
+
+Nothing looked wrong: both figures were real, the arithmetic was right, and
+only the windows disagreed. Marcos caught it from memory — "we had ~900 reg in
+sept, october is not 165%".
+
+- `clampToCoverage()` trims the range at `data_through`, `matchPriorLength()`
+  cuts the prior span to the same number of days **from its own start** — month
+  to date against the same days of the month before.
+- It corrects in both directions. GGR went **down**, +383% → +296%, because
+  26–30 September had negative GGR, so the full month was worth less than its
+  first 25 days.
+- The label names the span it compares against (`vs. 1 sep – 25 sep 2026`)
+  rather than saying "the previous N days", which is unreadable once the window
+  is not a whole month.
+- `scripts/verify-period-compare.mjs` guards it in the build. Confirmed it
+  fails: removing the clamp breaks four of its nine cases. A finished month must
+  stay untouched, or every historical comparison shifts.
 
 ## A banned player's money is still money
 
