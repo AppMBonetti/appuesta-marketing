@@ -6,7 +6,7 @@ import { Wallet, TrendingUp, Coins, Users, Percent, PiggyBank, ArrowLeftRight } 
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { dataAnchoredRange, dayStartUTC, dayAfterUTC, dateRangeLabel, formatWeek } from "../lib/period";
-import { SectionHeading, Panel, KpiCard, PeriodBar, Spinner, fmtDOP, deltaOf, EmptyState } from "../components/ui";
+import { SectionHeading, Panel, KpiCard, Spinner, fmtDOP, deltaOf, EmptyState } from "../components/ui";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "../components/SortHeader";
 import GgrReconciliation from "../components/GgrReconciliation";
@@ -116,9 +116,10 @@ const GGR_TIER_SORT_COLUMNS = [
 
 export default function Funnel({ s, lang }) {
   const [view, setView] = useState("deposits");
+  // One grain for the whole page. Every section below reads this -- the
+  // comparison card, the trend table, the chart and the registration funnel --
+  // instead of each carrying its own selector on its own clock.
   const [period, setPeriod] = useState("week");
-  const [customStart, setCustomStart] = useState(new Date().toISOString().slice(0, 10));
-  const [customEnd, setCustomEnd] = useState(new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [data, setData] = useState(null);
@@ -154,7 +155,7 @@ export default function Funnel({ s, lang }) {
         // 1 Nov against data through the 25th, so the filter looked dead.
         const { data: dt } = await supabase.from("data_through").select("d").maybeSingle();
         const through = dt?.d || null;
-        const range = dataAnchoredRange(period, through, customStart, customEnd);
+        const range = dataAnchoredRange(period, through);
         if (!range) { if (active) { setData(null); setLoading(false); } return; }
         const { current, previous } = range;
 
@@ -251,9 +252,8 @@ export default function Funnel({ s, lang }) {
 
     return () => { active = false; };
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [period, customStart, customEnd]);
+  }, [period]);
 
-  const periodBarProps = { s, period, setPeriod, customStart, setCustomStart, customEnd, setCustomEnd };
   const maxFunnel = data?.current?.reg || 0;
   const hasTierData = tierRows.some(r => r.players > 0);
 
@@ -261,13 +261,18 @@ export default function Funnel({ s, lang }) {
   // the source actually has. A period that happens to be one week lines up with
   // the other weekly series; a wider backfill shows as a single wider point
   // rather than being spread across weeks it cannot be attributed to.
-  const depositsWeekly = depositPeriods.map(r => ({
-    week: r.period_start, value: Number(r.deposit_amount) || 0,
-  }));
+  // The deposit series at the page's grain. Periods are the report's own at
+  // week grain, because that is the finest it can state; months and days come
+  // from the views built for them.
+  const depositSeries = period === "month"
+    ? depositMonths.map(r => ({ week: r.month_start, value: Number(r.deposit_amount) || 0 }))
+    : period === "day"
+      ? depositDays.map(r => ({ week: r.day, value: Number(r.deposit_amount) || 0 }))
+      : depositPeriods.map(r => ({ week: r.period_start, value: Number(r.deposit_amount) || 0 }));
   // Altenar bets carry a real bet_date, so GGR is genuinely weekly.
   const hasBets = betsWeekly.length > 0;
   const ggrWeekly = betsWeekly.map(b => ({ week: b.week_start, value: Number(b.ggr) || 0 }));
-  const ftdWeeklyChart = ftdWeekly.map(r => ({ week: r.week_start, value: r.ftds }));
+  const ftdSeries = ftdWeekly.map(r => ({ week: r.week_start, value: r.ftds }));
 
   // Withdrawals come from the same payments report rows as deposits, so net
   // cash is only ever stated over the periods that report covers -- never a
@@ -329,17 +334,43 @@ export default function Funnel({ s, lang }) {
         ))}
       </div>
 
+      {/* The page's one period control. Día appears only once the transaction
+          export is loaded -- the grouped payments report sums a date range with
+          no day on it, so a day grain would show an empty headline. */}
+      {view === "deposits" && !loading && !error && (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 18 }}>
+          <span style={{ fontSize: 12, color: C.inkDim }}>{s.dep.grainLabel}</span>
+          <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
+            {[["day", s.dep.grainDay], ["week", s.dep.grainWeek], ["month", s.dep.grainMonth]]
+              .filter(([v]) => v !== "day" || depositDays.length > 0)
+              .map(([v, label]) => (
+                <button key={v} onClick={() => setPeriod(v)}
+                  style={{ padding: "6px 16px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: period === v ? C.accent : "transparent", color: period === v ? "#fff" : C.inkDim }}>
+                  {label}
+                </button>
+              ))}
+          </div>
+          {depositDays.length === 0 && (
+            <span style={{ fontSize: 11.5, color: C.inkFaint }}>{s.dep.grainDayLocked}</span>
+          )}
+        </div>
+      )}
+
       {loading && <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><Spinner size={22} /></div>}
       {error && <Panel style={{ color: C.negative, marginBottom: 20 }}>{error}</Panel>}
 
       {!loading && !error && view === "deposits" && data && (
         <>
-          <DepositTrends s={s} lang={lang} weeks={depositWeeks} months={depositMonths} />
+          <DepositTrends s={s} lang={lang} weeks={depositWeeks} months={depositMonths}
+            days={depositDays} grain={period} />
 
-          <DepositDaily s={s} lang={lang} days={depositDays} methods={depositMethods} />
+          {/* Only at day grain now: the day table was on screen beside weekly
+              and monthly tables, which is three clocks at once. */}
+          {period === "day" && (
+            <DepositDaily s={s} lang={lang} days={depositDays} methods={depositMethods} />
+          )}
 
           <SectionHeading title={s.dep.funnelTitle} subtitle={s.dep.funnelSub} />
-          <PeriodBar {...periodBarProps} />
 
           {/* Which days these figures actually describe, and which days they
               are measured against. Without it the month filter read "vs. mes
@@ -407,10 +438,10 @@ export default function Funnel({ s, lang }) {
           )}
 
           <SectionHeading title={s.depWeeklyTitle} subtitle={s.depWeeklySub} />
-          {depositsWeekly.length === 0 ? (
+          {depositSeries.length === 0 ? (
             <InfoNote>{s.needsTwoSnapshots}</InfoNote>
           ) : (
-            <Panel style={{ marginBottom: 26 }}><WeeklyBarChart data={depositsWeekly} lang={lang} color={C.accent} /></Panel>
+            <Panel style={{ marginBottom: 26 }}><WeeklyBarChart data={depositSeries} lang={lang} color={C.accent} /></Panel>
           )}
 
           {hasPayoutData && (
@@ -456,8 +487,8 @@ export default function Funnel({ s, lang }) {
           )}
 
           <SectionHeading title={s.ftdWeeklyTitle} subtitle={s.ftdWeeklySub} />
-          {ftdWeeklyChart.length === 0 ? <div style={{ marginBottom: 26 }}><EmptyState s={s} /></div> : (
-            <Panel style={{ marginBottom: 26 }}><WeeklyBarChart data={ftdWeeklyChart} lang={lang} color={C.positive} money={false} /></Panel>
+          {ftdSeries.length === 0 ? <div style={{ marginBottom: 26 }}><EmptyState s={s} /></div> : (
+            <Panel style={{ marginBottom: 26 }}><WeeklyBarChart data={ftdSeries} lang={lang} color={C.positive} money={false} /></Panel>
           )}
 
           <SectionHeading title={s.depByTierTitle} subtitle={s.depByTierSub} />

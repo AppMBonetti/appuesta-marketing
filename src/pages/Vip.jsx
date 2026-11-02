@@ -187,6 +187,9 @@ export default function Vip({ s, lang }) {
   const [players, setPlayers] = useState([]);
   const [openTier, setOpenTier] = useState(null);
   const [search, setSearch] = useState("");
+  // Same contact filter as the tracker and Segments: narrows the lists, never
+  // the tier counts, because a restricted player's money still counts.
+  const [hideRestricted, setHideRestricted] = useState(false);
   // Tracking first: opening this page, the question is almost always "how are my
   // VIPs doing", not "what does the ladder look like".
   const [view, setView] = useState("track");
@@ -221,7 +224,10 @@ export default function Vip({ s, lang }) {
   // Search narrows the lists and the exports, but never the tier counts above
   // them — those state the real size of each tier regardless of what is filtered.
   const needle = normalize(search.trim());
-  const visiblePlayers = players.filter(p => matchesSearch(p, needle));
+  const visiblePlayers = players.filter(
+    p => matchesSearch(p, needle) && !(hideRestricted && p.restricted)
+  );
+  const restrictedCount = players.filter(p => p.restricted).length;
 
   const maxPop = Math.max(1, ...rows.map(r => Number(r.players)));
   const totalPlayers = rows.reduce((sum, r) => sum + Number(r.players), 0);
@@ -273,6 +279,14 @@ export default function Vip({ s, lang }) {
                 placeholder={s.tierDrill.searchPlaceholder}
                 style={{ flex: "1 1 240px", maxWidth: 340, padding: "7px 11px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: C.panel, color: C.ink, fontSize: 12.5 }}
               />
+              {restrictedCount > 0 && (
+                <label title={s.vipTrack.hideRestrictedHint}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: C.inkDim, cursor: "pointer" }}>
+                  <input type="checkbox" checked={hideRestricted}
+                    onChange={e => { setHideRestricted(e.target.checked); setOpenTier(null); }} />
+                  {s.vipTrack.hideRestricted.replace("{n}", String(restrictedCount))}
+                </label>
+              )}
               <button
                 onClick={() => exportPlayers(visiblePlayers, search ? "busqueda" : "todos")}
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5, cursor: "pointer" }}

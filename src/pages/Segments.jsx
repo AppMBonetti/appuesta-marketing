@@ -125,7 +125,7 @@ function fmtDay(value, lang) {
 
 const EMPTY_FILTERS = {
   stage: "", tier: "", sport: "", search: "", minDeposits: "", minBets: "",
-  login: "", engaged: false,
+  login: "", engaged: false, hideRestricted: false,
 };
 
 export default function Segments({ s, lang }) {
@@ -247,6 +247,10 @@ export default function Segments({ s, lang }) {
       if (filters.sport && p.top_sport !== filters.sport) return false;
       if (filters.login && p.login_recency !== filters.login) return false;
       if (filters.engaged && !p.engaged_not_depositing) return false;
+      // A contact filter, not a financial one. Restricted players stay in every
+      // total -- their money is real -- but when the list is being read to
+      // decide who to call, they are noise at best and a mistake at worst.
+      if (filters.hideRestricted && p.restricted) return false;
       if (minDeposits != null && Number(p.deposits || 0) < minDeposits) return false;
       if (minBets != null && Number(p.bets || 0) < minBets) return false;
       if (needle) {
@@ -309,7 +313,8 @@ export default function Segments({ s, lang }) {
 
   function exportSegment() {
     const parts = [filters.stage, filters.tier, filters.sport, filters.login,
-      filters.engaged ? "engaged-not-depositing" : ""].filter(Boolean);
+      filters.engaged ? "engaged-not-depositing" : "",
+      filters.hideRestricted ? "sin-restringidos" : ""].filter(Boolean);
     const label = parts.length ? parts.join("-") : "todos";
     const slug = label.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-");
     downloadCsv(`appuesta-segmento-${slug}-${new Date().toISOString().slice(0, 10)}.csv`, CSV_COLUMNS, sorted);
@@ -517,6 +522,12 @@ export default function Segments({ s, lang }) {
           <input type="checkbox" checked={filters.engaged}
             onChange={e => setFilters(f => ({ ...f, engaged: e.target.checked }))} />
           {s.seg.engagedNotDepositing}
+        </label>
+        <label title={s.seg.hideRestrictedHint}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: C.inkDim, cursor: "pointer" }}>
+          <input type="checkbox" checked={filters.hideRestricted}
+            onChange={e => setFilters(f => ({ ...f, hideRestricted: e.target.checked }))} />
+          {s.seg.hideRestricted}
         </label>
         <input type="number" value={filters.minDeposits} placeholder={s.seg.minDeposits}
           onChange={e => setFilters(f => ({ ...f, minDeposits: e.target.value }))} style={{ ...input, width: 130 }} />
