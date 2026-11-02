@@ -450,6 +450,14 @@ export default function Imports({ s, lang }) {
         if (statsErr) throw statsErr;
         const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
         if (rpcErr) throw rpcErr;
+        // Also captured here, not only at the end of the player report. The
+        // anchor is the earliest of three sources, so when the player report is
+        // uploaded first it is still pinned to the previous week's bets, and a
+        // capture taken then is keyed to a cut-off earlier than its own data.
+        // The function refuses to write in that state, so whichever upload
+        // brings the anchor level is the one that records the week.
+        const { error: snapErr } = await supabase.rpc("snapshot_player_stages");
+        if (snapErr) throw snapErr;
 
         setPhase(source, "done", { rowCount: bets.length, unmatched, unmatchedHeaders, unknownStatuses, known, retimed });
       }

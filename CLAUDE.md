@@ -531,3 +531,68 @@ figures match the Overview.
 - `scripts/verify-period-compare.mjs` covers the anchoring, 20 cases.
   Mutation-tested: anchoring to the clock breaks 7, dropping the length match
   breaks 2.
+
+## A direct connection cannot see a whole class of failure
+
+CLAUDE.md already says to *measure* as `authenticated` rather than as yourself.
+The same applies to *running* a function, and for a different reason:
+`authenticator`, the role PostgREST connects as, carries
+
+```
+session_preload_libraries = supautils, safeupdate
+```
+
+and `safeupdate` rejects a `DELETE` or `UPDATE` with no `WHERE` clause **for the
+whole session** — inside a `SECURITY DEFINER` function too, because it is an
+executor hook, not a permission check. `SECURITY DEFINER` changes the user, not
+the loaded libraries.
+
+So `delete from player_sport_counts;` inside `refresh_player_sport_counts()`
+succeeded every time it was called from the MCP connection and failed the first
+time the dashboard called it, with **"DELETE requires a WHERE clause"**. The
+Altenar import on 2026-11-02 died there; 12,424 bets had already landed, and
+only the refreshes after them were lost.
+
+- `LOAD 'safeupdate'` is not permitted from a normal connection, so the guard
+  cannot be reproduced from here. **The real proof is an import from the
+  dashboard.** Verifying a cache function by calling it over MCP proves it
+  computes the right rows and nothing about whether the app can run it.
+- Both refresh functions now delete with a predicate on a real `NOT NULL`
+  column, not `where true` — it matches every row just the same and does not
+  depend on whether a tautology survives constant folding long enough for the
+  hook to see it.
+- `refresh_player_ggr()`, `assign_vip_tiers()`, `refresh_internal_flags()` and
+  `reconcile_deposit_period_scopes()` contain no `DELETE` at all, so nothing
+  else in the import path was affected.
+
+## A capture taken while the anchor lags describes nothing
+
+`data_through` is the **earliest** of its three sources. On screen that is the
+right kind of conservative — the whole point of the anchor. For a *capture* it
+is a trap, and the upload order walks straight into it: player report, payments,
+Altenar.
+
+On 2026-11-02 the player report put deposits and logins at 1 November while
+`bets` still stopped on 25 October, so `data_through` was still 25 October.
+`snapshot_player_stages()` ran at the end of that import and wrote the whole
+roster under `captured_on = 2026-10-25`, holding **333 players with a negative
+`days_since_deposit`** — down to −7, because they had deposited *after* the
+cut-off their stage was measured against.
+
+It also overwrote the genuine 25 October row, the key being
+`(player_id, captured_on)`, and the 268 "stage moves" that then appeared against
+the 1 November capture were pure artefact. Left alone it would have recurred
+every week, each capture a week stale in its key, every comparison between the
+wrong pair.
+
+- The function now **returns 0 and writes nothing** while `data_through` is
+  behind the newest `last_deposit_date` / `last_login_at` in `real_players`.
+- **The Altenar import calls it too**, so whichever upload brings the anchor
+  level is the one that records the week. Neither call needs to be "the last
+  one" and the order can change without breaking it.
+- Verified both ways: it writes when the anchor is level, and returns 0 with the
+  bets rolled back behind the player data inside a `begin … rollback`.
+- The corrupt row was deleted. **1 November is the first real baseline**, so the
+  first stage-movement comparison is the import after it.
+- The general shape: anything *stored* keyed by `data_through` has to check that
+  the anchor is not lagging. Anything merely *displayed* does not.
