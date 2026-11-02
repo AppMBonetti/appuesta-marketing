@@ -187,6 +187,12 @@ declare n integer;
 begin
   -- Rebuilt whole rather than patched, inside one transaction, so readers never
   -- see it empty. Same contract as refresh_player_sport_counts().
+  --
+  -- NOTE: the bare DELETE below is wrong and was corrected the same week in
+  -- 20261102_safeupdate_and_lagging_anchor.sql. PostgREST's role preloads the
+  -- `safeupdate` library, which rejects a DELETE with no WHERE clause even
+  -- inside a SECURITY DEFINER function. It passed here because it was run from
+  -- a direct postgres connection, which does not load that library.
   delete from player_bet_stats;
   insert into player_bet_stats
     (player_key, bets, total_stake, avg_stake, median_stake,
