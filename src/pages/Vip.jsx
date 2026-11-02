@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
 import { downloadCsv } from "../lib/csv";
+import { STAGE_COLORS } from "../lib/lifecycle";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "../components/SortHeader";
 import VipTracker from "../components/VipTracker";
@@ -17,6 +18,8 @@ const CSV_COLUMNS = [
   { label: "name", value: p => p.name },
   { label: "email", value: p => p.email },
   { label: "vip_tier", value: p => p.vip_tier },
+  { label: "lifecycle", value: p => p.lifecycle },
+  { label: "restricted", value: p => (p.restricted ? "yes" : "no") },
   { label: "registered_at", value: p => p.registered_at },
   { label: "first_deposit_date", value: p => p.first_deposit_date },
   { label: "last_deposit_date", value: p => p.last_deposit_date },
@@ -64,6 +67,17 @@ function fmtDate(value, s, lang) {
   });
 }
 
+/** One labelled figure in a tier's header row. */
+function Metric({ label, value, sub }) {
+  return (
+    <div style={{ width: 104, flexShrink: 0, textAlign: "right" }}>
+      <div style={{ color: C.inkFaint, fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</div>
+      <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 13, marginTop: 2 }}>{value}</div>
+      {sub && <div style={{ color: C.inkFaint, fontSize: 10.5, marginTop: 1 }}>{sub}</div>}
+    </div>
+  );
+}
+
 /** How far a player has come from their tier's floor toward the next one. */
 function ProgressToNext({ player, color, s }) {
   const pct = Math.round((Number(player.progress_to_next) || 0) * 100);
@@ -87,6 +101,9 @@ function ProgressToNext({ player, color, s }) {
 const TIER_SORT_COLUMNS = [
   { key: "player", kind: "text", label: s => s.tierDrill.cols.player, value: p => p.name || p.id },
   { key: "playerId", kind: "text", label: s => s.tierDrill.cols.playerId, value: p => p.id },
+  // The tier says what a player is worth; this says whether they are still
+  // here. A Leyenda who went cold is the one row worth calling today.
+  { key: "lifecycle", kind: "text", label: s => s.seg.cols.lifecycle, value: p => p.lifecycle },
   { key: "deposits", label: s => s.tierDrill.cols.deposits, value: p => p.total_deposit_amount },
   { key: "count", label: s => s.tierDrill.cols.count, value: p => p.total_deposit_count },
   { key: "lastDeposit", kind: "date", label: s => s.tierDrill.cols.lastDeposit, value: p => p.last_deposit_date },
@@ -120,6 +137,21 @@ function TierPlayers({ players, tier, s, lang, thStyle, tdStyle }) {
           <tr key={p.id}>
             <td style={{ ...tdStyle, fontWeight: 500 }}>{p.name || p.id}</td>
             <td style={{ ...tdStyle, color: C.inkFaint, fontFamily: "monospace", fontSize: 11.5 }}>{p.id}</td>
+            <td style={tdStyle}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_COLORS[p.lifecycle] || C.inkFaint }} />
+                {s.seg.lifecycle[p.lifecycle] || p.lifecycle || "—"}
+                {/* Banned, limited or self-excluded: their money still counts,
+                    which is why they are in this list, but nobody should call
+                    them. */}
+                {p.restricted && (
+                  <span title={p.restriction_reason || s.seg.restrictedHint}
+                    style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px" }}>
+                    {s.seg.restricted}
+                  </span>
+                )}
+              </span>
+            </td>
             <td style={tdStyle}>{fmtDOP(p.total_deposit_amount)}</td>
             <td style={{ ...tdStyle, color: C.inkDim }}>{p.total_deposit_count ?? 0}</td>
             <td style={{ ...tdStyle, color: C.inkDim }}>{fmtDate(p.last_deposit_date, s, lang)}</td>
@@ -204,11 +236,22 @@ export default function Vip({ s, lang }) {
           title={view === "track" ? s.vipTrack.title : s.vipTitle}
           subtitle={view === "track" ? s.vipTrack.sub : s.vipSub}
         />
-        <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
-          {["track", "ladder"].map(v => (
+        {/* Two different jobs behind two one-word labels read as the same
+            screen twice. Each side now says what it answers. */}
+        <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 12, padding: 4, gap: 4 }}>
+          {[
+            ["track", s.vipToggle.track, s.vipToggle.trackHint],
+            ["ladder", s.vipToggle.ladder, s.vipToggle.ladderHint],
+          ].map(([v, label, hint]) => (
             <button key={v} onClick={() => setView(v)}
-              style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: view === v ? C.accent : "transparent", color: view === v ? "#fff" : C.inkDim }}>
-              {v === "track" ? s.vipToggle.track : s.vipToggle.ladder}
+              style={{
+                padding: "9px 16px", borderRadius: 9, border: "none", cursor: "pointer",
+                textAlign: "left", minWidth: 150,
+                background: view === v ? C.accent : "transparent",
+                color: view === v ? "#fff" : C.inkDim,
+              }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600 }}>{label}</div>
+              <div style={{ fontSize: 11, opacity: view === v ? 0.85 : 0.7, marginTop: 2 }}>{hint}</div>
             </button>
           ))}
         </div>
@@ -257,14 +300,33 @@ export default function Vip({ s, lang }) {
                     >
                       <Chevron size={15} color={C.inkFaint} style={{ flexShrink: 0 }} />
                       <div style={{ width: 12, height: 12, borderRadius: 99, background: t.color, flexShrink: 0 }} />
-                      <div style={{ width: 120, fontWeight: 600, fontSize: 13.5 }}>{t.tier_name}</div>
-                      <div style={{ width: 150, color: C.inkDim, fontSize: 12.5 }}>{fmtDOP(t.wager_required_dop)} req.</div>
-                      <div style={{ width: 90, color: C.inkDim, fontSize: 12.5 }}>{t.cashback_pct}% cashback</div>
-                      <div style={{ flex: 1, background: "#1D222B", borderRadius: 8, height: 20, minWidth: 60 }}>
-                        <div style={{ width: `${(count / maxPop) * 100}%`, height: "100%", borderRadius: 8, background: t.color, opacity: 0.85 }} />
+                      <div style={{ width: 128, flexShrink: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13.5 }}>{t.tier_name}</div>
+                        <div style={{ color: C.inkFaint, fontSize: 11, marginTop: 2 }}>
+                          {fmtDOP(t.wager_required_dop)} · {t.cashback_pct}%
+                        </div>
                       </div>
-                      <div style={{ width: 50, textAlign: "right", color: C.inkFaint, fontSize: 12 }}>{share.toFixed(0)}%</div>
-                      <div style={{ width: 55, textAlign: "right", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>{count.toLocaleString()}</div>
+                      <div style={{ flex: 1, minWidth: 60, display: "flex", flexDirection: "column", gap: 5 }}>
+                        <div style={{ background: "#1D222B", borderRadius: 8, height: 14 }}>
+                          <div style={{ width: `${(count / maxPop) * 100}%`, height: "100%", borderRadius: 8, background: t.color, opacity: 0.85 }} />
+                        </div>
+                        <div style={{ color: C.inkFaint, fontSize: 11 }}>
+                          {share.toFixed(0)}% {s.tierLadder.ofPlayers}
+                        </div>
+                      </div>
+                      {/* What each segment is actually worth: what comes in, and
+                          what gets played. */}
+                      <Metric label={s.vipCols.players} value={count.toLocaleString()} />
+                      <Metric label={s.tierMetrics.deposited} value={fmtDOP(t.total_deposits)} />
+                      <Metric label={s.tierMetrics.depositCount} value={Number(t.deposit_count).toLocaleString()} />
+                      <Metric label={s.tierMetrics.avgDeposit}
+                        value={t.avg_deposit_ticket == null ? "—" : fmtDOP(t.avg_deposit_ticket)} />
+                      <Metric label={s.tierMetrics.tickets} value={Number(t.tickets).toLocaleString()} />
+                      <Metric label={s.tierMetrics.avgTicket}
+                        value={t.avg_ticket == null ? "—" : fmtDOP(t.avg_ticket)}
+                        sub={Number(t.ticket_value) > 0
+                          ? s.tierLadder.bonusShare.replace("{p}", String(Math.round((Number(t.bonus_stake) / Number(t.ticket_value)) * 100)))
+                          : null} />
                     </button>
 
                     {open && (

@@ -222,6 +222,13 @@ export default function Imports({ s, lang }) {
         const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
         if (rpcErr) throw rpcErr;
 
+        // The stage is a threshold on days since the last deposit, so it moves
+        // when this report lands and at no other time. Captured here, keyed by
+        // the new data_through, which is what makes "who went from Active to
+        // Cooling" answerable at all -- it cannot be reconstructed later.
+        const { error: snapErr } = await supabase.rpc("snapshot_player_stages");
+        if (snapErr) throw snapErr;
+
         setPhase(source, "done", {
           rowCount: players.length, unmatchedHeaders, summary,
           // What the file actually knows about, which is often earlier than the
@@ -435,6 +442,12 @@ export default function Imports({ s, lang }) {
         // which is what put Segments at 4.6 s a page and into the 8 s timeout.
         const { error: sportErr } = await supabase.rpc("refresh_player_sport_counts");
         if (sportErr) throw sportErr;
+        // Same reasoning for the per-player bet aggregate -- count, stake,
+        // average, median, last bet, open bets. Computing it on read meant
+        // re-aggregating all 42,593 wagering bets, percentile_cont and all, on
+        // every page of Segments.
+        const { error: statsErr } = await supabase.rpc("refresh_player_bet_stats");
+        if (statsErr) throw statsErr;
         const { error: rpcErr } = await supabase.rpc("assign_vip_tiers");
         if (rpcErr) throw rpcErr;
 

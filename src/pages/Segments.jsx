@@ -3,9 +3,11 @@ import { Download, Search, X, UserMinus, ShieldAlert, RotateCcw } from "lucide-r
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
 import { downloadCsv } from "../lib/csv";
+import { addDays } from "../lib/period";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "../components/SortHeader";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
+import { STAGES, STAGE_COLORS } from "../lib/lifecycle";
 
 // Ordered by where a player sits in the funnel, not alphabetically, so the
 // strip reads as a lifecycle rather than a list.
@@ -44,11 +46,9 @@ const WATCH_SORT_COLUMNS = [
   { key: "lastLogin", kind: "date", label: s => s.seg.cols.lastLogin, value: w => w.last_login_at },
 ];
 
-const STAGES = ["Registered", "New", "Casual", "Active", "Cooling", "At risk", "Churned"];
-const STAGE_COLORS = {
-  Registered: "#8B93A3", New: "#6E9BF2", Casual: "#B073F0", Active: "#3ECB9E",
-  Cooling: "#D9A848", "At risk": "#F2994A", Churned: "#E4022B",
-};
+// Stage names, colours and health order live in one place now; the VIP tier
+// drill-down shows the same badge.
+const STAGE_MOVE_COLORS = { up: "#3ECB9E", down: "#F2994A", sideways: "#8B93A3" };
 
 const WATCH_FLAGS = ["excluded", "internal", "duplicate"];
 const WATCH_COLORS = { excluded: "#E4022B", internal: "#8B93A3", duplicate: "#D9A848" };
@@ -137,6 +137,13 @@ export default function Segments({ s, lang }) {
   const [error, setError] = useState(null);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [excluding, setExcluding] = useState(null);
+  const [trend, setTrend] = useState([]);
+  const [moves, setMoves] = useState([]);
+  // Which earlier import the stage counts are read against. Changes the number
+  // on each card and nothing else -- the player list below is always the book
+  // as it stands now, so comparing a period never re-buckets anybody.
+  const [compareTo, setCompareTo] = useState("week");
+  const [moveFilter, setMoveFilter] = useState("");
 
   // Excluding a player removes them from every total on the dashboard, so it
   // asks for a reason and then reloads rather than hiding the row locally and
@@ -196,16 +203,26 @@ export default function Segments({ s, lang }) {
   }
 
   async function load() {
-    const [p, sum, watch] = await Promise.all([
+    const [p, sum, watch, trend, moves] = await Promise.all([
       loadAllPlayers(),
       supabase.from("lifecycle_summary").select("*"),
       loadWatchlist(),
+      // Stage counts per import. Captured at import time and never
+      // reconstructible, so this is empty before the first capture and has
+      // nothing to compare against until the second.
+      supabase.from("lifecycle_trend").select("*").order("captured_on"),
+      supabase.from("player_stage_moves").select("*")
+        .order("captured_on", { ascending: false })
+        .order("deposits", { ascending: false })
+        .limit(1000),
     ]);
     if (p.error) setError(p.error.message);
     if (watch.error) setError(watch.error.message);
     setPlayers(p.data || []);
     setSummary(sum.data || []);
     setWatchlist(watch.data || []);
+    setTrend(trend.data || []);
+    setMoves(moves.data || []);
     setLoading(false);
   }
 
@@ -249,6 +266,39 @@ export default function Segments({ s, lang }) {
   const byStage = Object.fromEntries(summary.map(r => [r.lifecycle, r]));
   const totalPlayers = summary.reduce((sum, r) => sum + Number(r.players || 0), 0);
 
+  // The capture the cards are compared against: the newest one at least a week
+  // (or a month) older than the latest. Reports land weekly, so "a week ago"
+  // is usually the previous import and "a month ago" the one four back --
+  // picked by date rather than by position so a skipped week cannot pass for a
+  // week of change.
+  const captures = useMemo(
+    () => [...new Set(trend.map(r => r.captured_on))].sort(),
+    [trend]
+  );
+  const latestCapture = captures.length ? captures[captures.length - 1] : null;
+  const baselineCapture = useMemo(() => {
+    if (!latestCapture) return null;
+    const target = addDays(latestCapture, compareTo === "month" ? -28 : -6);
+    // The newest capture at or before the target, and never the latest itself.
+    const earlier = captures.filter(c => c < latestCapture && c <= target);
+    return earlier.length ? earlier[earlier.length - 1] : null;
+  }, [captures, latestCapture, compareTo]);
+
+  const baselineByStage = useMemo(() => Object.fromEntries(
+    trend.filter(r => r.captured_on === baselineCapture)
+      .map(r => [r.lifecycle, Number(r.players) || 0])
+  ), [trend, baselineCapture]);
+
+  // Only the moves from the latest capture: earlier ones are history, not news.
+  const latestMoves = useMemo(() => {
+    if (!moves.length) return [];
+    const newest = moves[0].captured_on;
+    return moves.filter(m => m.captured_on === newest);
+  }, [moves]);
+  const shownMoves = moveFilter
+    ? latestMoves.filter(m => m.direction === moveFilter)
+    : latestMoves;
+
   const input = {
     background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8,
     color: C.ink, padding: "7px 10px", fontSize: 12.5,
@@ -287,12 +337,36 @@ export default function Segments({ s, lang }) {
         )}
       </div>
 
+      {/* Changes only the figure on each card. The list below is always the
+          book as it stands, so switching this never re-sorts anybody into a
+          different segment. */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+        <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
+          {[["week", s.seg.compare.week], ["month", s.seg.compare.month]].map(([v, label]) => (
+            <button key={v} onClick={() => setCompareTo(v)}
+              style={{ padding: "5px 13px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, background: compareTo === v ? C.accent : "transparent", color: compareTo === v ? "#fff" : C.inkDim }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <span style={{ fontSize: 11.5, color: C.inkFaint }}>
+          {baselineCapture
+            ? s.seg.compare.against.replace("{d}", fmtDay(baselineCapture, lang))
+            : s.seg.compare.noHistory}
+        </span>
+      </div>
+
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
         {STAGES.map(stage => {
           const row = byStage[stage];
           const count = row ? Number(row.players) : 0;
           const selected = filters.stage === stage;
           const share = totalPlayers > 0 ? (count / totalPlayers) * 100 : 0;
+          // Growing "Churned" is bad news, so the colour follows the stage, not
+          // the sign of the number.
+          const before = baselineCapture ? baselineByStage[stage] ?? 0 : null;
+          const change = before == null ? null : count - before;
+          const goodToGrow = stage === "New" || stage === "Active";
           return (
             <button
               key={stage}
@@ -309,7 +383,20 @@ export default function Segments({ s, lang }) {
                 <span style={{ width: 9, height: 9, borderRadius: 99, background: STAGE_COLORS[stage] }} />
                 <span style={{ fontSize: 12, color: C.inkDim }}>{s.seg.lifecycle[stage]}</span>
               </div>
-              <div style={{ fontSize: 20, fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{count}</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+                <span style={{ fontSize: 20, fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{count}</span>
+                {change != null && change !== 0 && (
+                  <span style={{
+                    fontSize: 12, fontWeight: 600,
+                    color: (change > 0) === goodToGrow ? C.positive : C.negative,
+                  }}>
+                    {change > 0 ? "+" : ""}{change}
+                  </span>
+                )}
+                {change === 0 && (
+                  <span style={{ fontSize: 12, color: C.inkFaint }}>±0</span>
+                )}
+              </div>
               <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 3 }}>
                 {share.toFixed(0)}% · {fmtDOP(row?.ggr ?? 0)} GGR
               </div>
@@ -323,6 +410,86 @@ export default function Segments({ s, lang }) {
           <strong style={{ color: C.ink }}>{s.seg.lifecycle[filters.stage]}</strong> — {s.seg.desc[filters.stage]}
         </Panel>
       )}
+
+      {/* Who crossed a line since the previous import, and which way. The
+          counts above say the funnel changed shape; this says who did it, which
+          is what makes the cause findable. */}
+      <div style={{ marginBottom: 20 }}>
+        <SectionHeading title={s.seg.moves.title} subtitle={s.seg.moves.sub} />
+        {latestMoves.length === 0 ? (
+          <Panel style={{ padding: "13px 16px", fontSize: 12.5, color: C.inkDim }}>
+            {captures.length < 2 ? s.seg.moves.needsTwo : s.seg.moves.none}
+          </Panel>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+              {["up", "down"].map(dir => {
+                const n = latestMoves.filter(m => m.direction === dir).length;
+                const on = moveFilter === dir;
+                return (
+                  <button key={dir} onClick={() => setMoveFilter(on ? "" : dir)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 13px", borderRadius: 9, cursor: "pointer", background: C.panel, border: `1px solid ${on ? STAGE_MOVE_COLORS[dir] : C.panelBorder}`, color: C.ink, fontSize: 12.5 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_MOVE_COLORS[dir] }} />
+                    {s.seg.moves[dir]}
+                    <strong style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{n}</strong>
+                  </button>
+                );
+              })}
+              <span style={{ marginLeft: "auto", fontSize: 11.5, color: C.inkFaint }}>
+                {s.seg.moves.between
+                  .replace("{from}", fmtDay(latestMoves[0].prev_captured_on, lang))
+                  .replace("{to}", fmtDay(latestMoves[0].captured_on, lang))}
+              </span>
+            </div>
+            <Panel style={{ padding: 4, overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {[s.seg.cols.player, s.seg.moves.from, s.seg.moves.to, s.seg.cols.tier,
+                      s.seg.moves.depositsAdded, s.seg.cols.balance, s.seg.cols.lastDeposit]
+                      .map(h => <th key={h} style={th}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {shownMoves.map(m => (
+                    <tr key={`${m.player_id}|${m.captured_on}`} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
+                      <td style={{ ...td, fontWeight: 500 }}>
+                        {m.name || m.username || m.player_id}
+                        {m.restricted && (
+                          <span title={m.restriction_reason || s.seg.restrictedHint}
+                            style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
+                            {s.seg.restricted}
+                          </span>
+                        )}
+                        <div style={{ fontSize: 11, color: C.inkFaint }}>{m.email || ""}</div>
+                      </td>
+                      <td style={{ ...td, color: C.inkDim }}>
+                        <span style={{ width: 7, height: 7, borderRadius: 99, background: STAGE_COLORS[m.prev_lifecycle], display: "inline-block", marginRight: 6 }} />
+                        {s.seg.lifecycle[m.prev_lifecycle] || m.prev_lifecycle}
+                      </td>
+                      <td style={{ ...td, color: STAGE_MOVE_COLORS[m.direction], fontWeight: 500 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: 99, background: STAGE_COLORS[m.lifecycle], display: "inline-block", marginRight: 6 }} />
+                        {s.seg.lifecycle[m.lifecycle] || m.lifecycle}
+                      </td>
+                      <td style={{ ...td, color: C.inkDim }}>{m.vip_tier || "—"}</td>
+                      <td style={td}>
+                        {Number(m.deposits_added) > 0 ? fmtDOP(m.deposits_added) : "—"}
+                      </td>
+                      <td style={{ ...td, color: Number(m.total_balance) > 0 ? C.positive : C.inkDim }}>
+                        {m.total_balance == null ? "—" : fmtDOP(m.total_balance)}
+                      </td>
+                      <td style={{ ...td, color: C.inkDim }}>{dateOf(m.last_deposit_date)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+            <p style={{ color: C.inkFaint, fontSize: 11.5, margin: "10px 0 0", maxWidth: 700 }}>
+              {s.seg.moves.note}
+            </p>
+          </>
+        )}
+      </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>

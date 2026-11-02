@@ -54,7 +54,20 @@ export default function DepositDaily({ s, lang, days, methods }) {
   const td = { padding: "8px 12px", fontSize: 12.5, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
   const maxAmount = Math.max(...recent.map(d => Number(d.deposit_amount) || 0), 1);
 
-  if (!days?.length && !methods?.length) return null;
+  // Returning null here left the question unanswered: the section simply was
+  // not there, and "can we see deposits by day?" has a real answer -- yes, with
+  // the transaction export, which the grouped payments report cannot stand in
+  // for because it sums a date range without naming a day.
+  if (!days?.length && !methods?.length) {
+    return (
+      <>
+        <SectionHeading title={s.dep.dailyTitle} subtitle={s.dep.dailySub} />
+        <Panel style={{ marginBottom: 26, padding: "16px 18px", fontSize: 12.5, color: C.inkDim }}>
+          {s.dep.dailyMissing}
+        </Panel>
+      </>
+    );
+  }
 
   return (
     <>
