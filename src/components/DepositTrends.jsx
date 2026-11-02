@@ -14,6 +14,13 @@ import { SortHeader } from "./SortHeader";
  * that is up or down on the period before. Running both off one period selector
  * was what made the tab read as though it contradicted itself.
  */
+/** "1 nov 2026" — the day a comparison card is describing. */
+function fmtDayLabel(isoDay, lang) {
+  return new Date(`${String(isoDay).slice(0, 10)}T12:00:00Z`).toLocaleDateString(
+    lang === "es" ? "es-DO" : "en-GB",
+    { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 function pctChange(current, previous) {
   if (current == null || previous == null || previous === 0) return null;
   return (current - previous) / previous;
@@ -81,7 +88,11 @@ const WEEK_SORT_COLUMNS = [
   { key: "wowShort", label: s => s.dep.wowShort, value: w => w.change },
 ];
 
-export default function DepositTrends({ s, lang, weeks, months }) {
+// One grain at a time. The page used to show week-on-week and month-on-month
+// side by side, then a table per month and a table per week below them, so four
+// grains were on screen at once and none of them was "the" period -- reading a
+// figure meant first working out which clock it was on.
+export default function DepositTrends({ s, lang, weeks, months, days, grain }) {
   const wk = [...weeks].sort((a, b) => a.week_start.localeCompare(b.week_start));
   const mo = [...months].sort((a, b) => a.month_start.localeCompare(b.month_start));
 
@@ -90,6 +101,10 @@ export default function DepositTrends({ s, lang, weeks, months }) {
     count: Number(r.deposit_count) || 0,
     depositors: Number(r.depositors) || 0,
   });
+
+  const dy = [...(days || [])].sort((a, b) => a.day.localeCompare(b.day));
+  const curDay = dy.length ? toRow(dy[dy.length - 1]) : null;
+  const prevDay = dy.length > 1 ? toRow(dy[dy.length - 2]) : null;
 
   const curWeek = wk.length ? toRow(wk[wk.length - 1]) : null;
   const prevWeek = wk.length > 1 ? toRow(wk[wk.length - 2]) : null;
@@ -115,21 +130,28 @@ export default function DepositTrends({ s, lang, weeks, months }) {
   const th = { padding: "9px 12px", textAlign: "right", color: C.inkDim, fontWeight: 500, fontSize: 11.5, whiteSpace: "nowrap" };
   const td = { padding: "8px 12px", fontSize: 12.5, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
 
-  if (!wk.length && !mo.length) return <EmptyState s={s} />;
+  if (!wk.length && !mo.length && !dy.length) return <EmptyState s={s} />;
 
   return (
     <>
       <SectionHeading title={s.dep.title} subtitle={s.dep.sub} />
 
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 22 }}>
-        {wk.length > 0 && (
+        {grain === "day" && dy.length > 0 && (
+          <Comparison
+            s={s} title={s.dep.dod}
+            subtitle={fmtDayLabel(dy[dy.length - 1].day, lang)}
+            current={curDay} previous={prevDay}
+          />
+        )}
+        {grain === "week" && wk.length > 0 && (
           <Comparison
             s={s} title={s.dep.wow}
             subtitle={weekRangeLabel(wk[wk.length - 1].week_start, lang)}
             current={curWeek} previous={prevWeek}
           />
         )}
-        {mo.length > 0 && (
+        {grain === "month" && mo.length > 0 && (
           <Comparison
             s={s} title={s.dep.mom}
             subtitle={formatMonth(mo[mo.length - 1].month_start, lang)}
@@ -139,7 +161,7 @@ export default function DepositTrends({ s, lang, weeks, months }) {
         )}
       </div>
 
-      {mo.length > 0 && (
+      {grain === "month" && mo.length > 0 && (
         <>
           <SectionHeading title={s.dep.byMonth} />
           <Panel style={{ padding: 4, overflow: "auto", marginBottom: 22 }}>
@@ -176,7 +198,7 @@ export default function DepositTrends({ s, lang, weeks, months }) {
         </>
       )}
 
-      {wk.length > 0 && (
+      {grain === "week" && wk.length > 0 && (
         <>
           <SectionHeading title={s.dep.byWeek} />
           <Panel style={{ padding: 4, overflow: "auto", marginBottom: 22 }}>

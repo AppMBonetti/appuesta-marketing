@@ -139,6 +139,17 @@ export function dataAnchoredRange(period, through, customStart, customEnd) {
 
   // No coverage yet: fall back to the calendar, which is all there is to go on.
   const anchor = through || new Date().toISOString().slice(0, 10);
+
+  // A day needs no clamping -- the anchor *is* the last covered day -- and its
+  // comparison is the day before, which is what "vs. yesterday" has to mean.
+  if (period === "day") {
+    return {
+      current: { start: anchor, end: anchor },
+      previous: { start: addDays(anchor, -1), end: addDays(anchor, -1) },
+      clamped: false,
+    };
+  }
+
   const bounds = period === "month" ? monthBoundsOf(anchor) : weekBoundsOf(anchor);
   const covered = clampToCoverage(bounds, through);
   const days = daysBetween(covered.start, covered.end);

@@ -73,6 +73,16 @@ check("month anchors to the month the data ends in",
 check("against the same days of the month before",
   { start: mth.previous.start, end: mth.previous.end }, { start: "2026-09-01", end: "2026-09-25" });
 
+// A day is the last covered day, compared against the day before it.
+const day = dataAnchoredRange("day", THROUGH);
+check("day is the last covered day",
+  { start: day.current.start, end: day.current.end }, { start: "2026-10-25", end: "2026-10-25" });
+check("compared against the day before",
+  { start: day.previous.start, end: day.previous.end }, { start: "2026-10-24", end: "2026-10-24" });
+check("a day is never marked as cut", day.clamped, false);
+check("a day crossing a month boundary still steps back one day",
+  dataAnchoredRange("day", "2026-11-01").previous, { start: "2026-10-31", end: "2026-10-31" });
+
 // A custom span is answered as typed, trimmed at the data, and has no prior.
 const custom = dataAnchoredRange("custom", THROUGH, "2026-10-01", "2026-10-31");
 check("a custom span is trimmed at the data",
@@ -86,4 +96,4 @@ if (failures.length) {
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log("verify-period-compare: 20 cases pass, periods are anchored to the data and compared like for like.");
+console.log("verify-period-compare: 24 cases pass, periods are anchored to the data and compared like for like.");

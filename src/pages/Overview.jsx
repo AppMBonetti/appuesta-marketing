@@ -27,9 +27,23 @@ const fmtPct = v => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
 const fmtX = v => (v == null ? "—" : `${v.toFixed(2)}x`);
 const fmtMoney2 = v => fmtMoney(v, { decimals: 2 });
 
-/** Every month that has at least one week of data, newest last. */
-function monthsWithData(weeks) {
-  return [...new Set(weeks.map(w => monthOfWeek(w.week)))].sort();
+/**
+ * Every month there are figures for, newest last.
+ *
+ * A week belongs to the month holding most of its days, which is always the
+ * month of its Thursday — so the week of 26 October is filed under October even
+ * though it reaches 1 November. Deriving the list from weeks alone therefore hid
+ * November from the selector while the page's own header said "Datos hasta
+ * 2026-11-01" and the goal tiles were already counting November's first day.
+ *
+ * The month the data actually reaches is included whether or not a week belongs
+ * to it yet. Picking it gives an exact day range that clampToCoverage trims to
+ * the days there are, the same as any month still in progress.
+ */
+function monthsWithData(weeks, through) {
+  const months = new Set(weeks.map(w => monthOfWeek(w.week)));
+  if (through) months.add(`${String(through).slice(0, 7)}-01`);
+  return [...months].sort();
 }
 
 /**
@@ -105,17 +119,26 @@ export default function Overview({ s, lang }) {
   // rounding to whole weeks — "the 10th to the 18th" has to mean those days,
   // which is how the figures get checked against the backoffice.
   const [rangeRow, setRangeRow] = useState(null);
+  // The last day the reports cover, so the month selector can offer a month the
+  // data has reached but no whole week belongs to yet.
+  const [through, setThrough] = useState(null);
   const [rangeBusy, setRangeBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
     (async () => {
-      const { data, error: err } = await supabase
-        .from("weekly_kpis").select("*").order("week_start");
+      const [weekRes, dtRes] = await Promise.all([
+        supabase.from("weekly_kpis").select("*").order("week_start"),
+        // The month list needs the day the data reaches, not just the weeks:
+        // the week holding 1 November is filed under October, so November would
+        // otherwise be unselectable while the page header already named it.
+        supabase.from("data_through").select("d").maybeSingle(),
+      ]);
       if (!active) return;
-      if (err) { setError(err.message); setLoading(false); return; }
-      const rows = (data || []).map(r => ({ week: r.week_start, raw: r, ...deriveWeeklyKpis(r) }));
+      if (weekRes.error) { setError(weekRes.error.message); setLoading(false); return; }
+      const rows = (weekRes.data || []).map(r => ({ week: r.week_start, raw: r, ...deriveWeeklyKpis(r) }));
       setWeeks(rows);
+      setThrough(dtRes.data?.d || null);
       if (rows.length) {
         const lastWeek = rows[rows.length - 1].week;
         setSelection({
@@ -169,7 +192,7 @@ export default function Overview({ s, lang }) {
 
   // Flagged on every row by the view; one read is enough to know.
   const depositsUntrusted = weeks.some(w => w.raw?.deposits_untrusted);
-  const months = monthsWithData(weeks);
+  const months = monthsWithData(weeks, through);
   const shown = weeksForSelection(weeks, mode, selection);
 
   // The comparison is the block of weeks of the same length immediately before

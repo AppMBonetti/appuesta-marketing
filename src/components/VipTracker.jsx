@@ -174,6 +174,10 @@ export default function VipTracker({ s, lang, tiers, progress }) {
   const [notesTick, setNotesTick] = useState(0);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(null);
+  // Which stage the table is showing, "" for every stage, and whether banned or
+  // self-excluded players are hidden from it.
+  const [stageTab, setStageTab] = useState("");
+  const [hideRestricted, setHideRestricted] = useState(false);
 
   const names = useMemo(() => vipTierNames(tiers), [tiers]);
 
@@ -279,11 +283,22 @@ export default function VipTracker({ s, lang, tiers, progress }) {
   const groupNet = enriched.reduce((sum, p) => sum + (Number(p.net) || 0), 0);
   const negativeNet = enriched.filter(p => Number(p.net) < 0);
 
-  // Grouped rather than one flat list: the stage is the first thing that
-  // decides whether a player needs anything at all. Sorting still applies, but
-  // inside each group.
+  // Hiding restricted players narrows the list and deliberately not the tiles
+  // above it. Their money still counts -- that is the whole point of keeping
+  // them in the book -- they just must never be called, so this is a filter on
+  // "who can I contact", not on what the group is worth.
+  const contactable = hideRestricted ? sorted.filter(p => !p.restricted) : sorted;
+  const restrictedCount = sorted.filter(p => p.restricted).length;
+
+  // One stage at a time rather than every stage stacked: 38 VIPs over six
+  // headed groups reads as one long list, and the question being asked is
+  // always about one stage -- who has gone cold, who is still here.
+  const stageCounts = Object.fromEntries(
+    STAGE_ORDER.map(stage => [stage, contactable.filter(p => p.lifecycle === stage).length])
+  );
+  const shown = stageTab ? contactable.filter(p => p.lifecycle === stageTab) : contactable;
   const groups = STAGE_ORDER
-    .map(stage => ({ stage, players: sorted.filter(p => p.lifecycle === stage) }))
+    .map(stage => ({ stage, players: shown.filter(p => p.lifecycle === stage) }))
     .filter(g => g.players.length);
 
   const th = { padding: "9px 12px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 11.5, whiteSpace: "nowrap" };
@@ -304,6 +319,42 @@ export default function VipTracker({ s, lang, tiers, progress }) {
           note={negativeNet.length ? s.vipTrack.kpi.negativeNet.replace("{n}", String(negativeNet.length)) : s.vipTrack.kpi.netNote} />
       </div>
 
+      {/* One stage at a time. The counts are of contactable players, so they
+          move with the restricted switch below rather than disagreeing with the
+          list underneath them. */}
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+        {[["", s.vipTrack.allStages, contactable.length], ...STAGE_ORDER
+          .filter(stage => stageCounts[stage] > 0)
+          .map(stage => [stage, s.seg.lifecycle[stage] || stage, stageCounts[stage]])]
+          .map(([key, label, n]) => {
+            const on = stageTab === key;
+            const color = key ? (STAGE_COLORS[key] || C.inkDim) : C.accent;
+            return (
+              <button key={key || "all"} onClick={() => setStageTab(key)}
+                title={key ? s.seg.desc[key] : undefined}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 7,
+                  padding: "7px 13px", borderRadius: 9, cursor: "pointer",
+                  background: on ? `${color}1F` : C.panel,
+                  border: `1px solid ${on ? color : C.panelBorder}`,
+                  color: C.ink, fontSize: 12.5, fontWeight: on ? 600 : 400,
+                }}>
+                {key && <span style={{ width: 8, height: 8, borderRadius: 99, background: color }} />}
+                {label}
+                <span style={{ color: on ? C.ink : C.inkFaint, fontFamily: "'Space Grotesk', sans-serif" }}>{n}</span>
+              </button>
+            );
+          })}
+        {restrictedCount > 0 && (
+          <label title={s.vipTrack.hideRestrictedHint}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: "auto", fontSize: 12, color: C.inkDim, cursor: "pointer" }}>
+            <input type="checkbox" checked={hideRestricted}
+              onChange={e => { setHideRestricted(e.target.checked); setOpen(null); }} />
+            {s.vipTrack.hideRestricted.replace("{n}", String(restrictedCount))}
+          </label>
+        )}
+      </div>
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 9, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           {through && (
@@ -315,7 +366,7 @@ export default function VipTracker({ s, lang, tiers, progress }) {
           <p style={{ fontSize: 11.5, color: C.inkFaint, margin: 0, maxWidth: 520 }}>{s.vipTrack.rowHint}</p>
         </div>
         <button
-          onClick={() => downloadCsv(`appuesta-vip-${new Date().toISOString().slice(0, 10)}.csv`, CSV_COLUMNS, sorted)}
+          onClick={() => downloadCsv(`appuesta-vip-${new Date().toISOString().slice(0, 10)}.csv`, CSV_COLUMNS, shown)}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12, cursor: "pointer" }}>
           <Download size={13} /> {s.vipTrack.export}
         </button>
