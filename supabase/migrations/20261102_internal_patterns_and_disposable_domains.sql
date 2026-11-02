@@ -49,25 +49,150 @@ update public.app_settings
 select public.refresh_internal_flags();
 
 -- ---------------------------------------------------------------------------
--- NOT done here, deliberately: applying the disposable list as a rule
+-- The disposable list becomes a rule -- approved by Marcos after seeing the cost
 -- ---------------------------------------------------------------------------
 --
--- `disposable_email_domains` is a note, not a rule. The 138 accounts marked
--- "Correo desechable — registro fraudulento" were excluded by a one-off sweep
--- in August and nothing has applied the list since, so adding a domain to
--- app_settings does nothing on its own. That is how tanpony.com reached 100
+-- `disposable_email_domains` was a note, not a rule. The 138 accounts marked
+-- "Correo desechable — registro fraudulento" were excluded by a one-off sweep in
+-- August and nothing applied the list afterwards, so adding a domain to
+-- app_settings did nothing on its own. That is how tanpony.com reached 100
 -- accounts unnoticed.
 --
--- Making refresh_internal_flags() apply it was written, tested in a rolled-back
--- transaction, and then held back, because of what the test showed:
+-- Applying it was written, tested in a rolled-back transaction, and then put to
+-- Marcos rather than shipped, because of what the test showed. He approved it.
 --
---   707 accounts would be excluded, across seven domains still taking signups
---   through 1 November, holding DOP 400 between all of them -- and 657 of them
---   registered in October, which is 24% of the month's 2,746 registrations.
+--   | book                      | 4,742 -> 4,071  (-671) |
+--   | excluded                  |   145 ->   847  (+702) |
+--   | October registrations     | 2,749 -> 2,128  (-621) |
+--   | September registrations   |   847 ->   847  (none) |
+--   | October FTDs              |   508 ->   507         |
+--   | deposits, all time        | 20,621,176 -> 20,620,776 |
 --
--- October registrations would read 2,089 instead of 2,746, and growth against
--- September would go from +224% to +147%. That is Marcos's headline figure, so
--- it is his call and not a side effect of fixing three surnames. The rule is
--- ready; it only ever sets `excluded`, never clears it, and skips any row that
--- already carries an exclusion_reason so an operator's own decision via
--- set_player_excluded() is never overwritten.
+-- 707 accounts across seven domains still taking signups through 1 November,
+-- holding **DOP 400 between all of them**. Growth for October against September
+-- goes from +224% to **+151%** -- the honest figure. September had none of
+-- them: the ring arrived in October, which is exactly why the month looked so
+-- good.
+--
+-- The rule is one-directional on purpose:
+--   * it only ever sets `excluded`, never clears it;
+--   * it skips any row that already carries an exclusion_reason, so an
+--     operator's decision through set_player_excluded() is never overwritten;
+--   * it writes its own reason, so the two stay distinguishable.
+--
+-- `excluded`, not `restricted` -- the distinction the 2026-10-26 migration drew.
+-- These were never customers; a restricted player is a customer whose money
+-- still counts.
+create or replace function public.refresh_internal_flags()
+returns integer
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare
+  ops_start      date;
+  domains        text[];
+  usernames      text[];
+  patterns       text[];
+  disposable     text[];
+  flagged        integer;
+begin
+  select value::date into ops_start from app_settings where key = 'operations_start_date';
+  select string_to_array(lower(value), ',') into domains    from app_settings where key = 'internal_email_domains';
+  select string_to_array(lower(value), ',') into usernames  from app_settings where key = 'internal_usernames';
+  select string_to_array(lower(value), ',') into patterns   from app_settings where key = 'internal_name_patterns';
+  select string_to_array(lower(value), ',') into disposable from app_settings where key = 'disposable_email_domains';
+
+  update players p
+     set is_internal = rule.flag
+    from (
+      select id,
+             (
+               (ops_start is not null and registered_at < ops_start)
+               or exists (
+                 select 1 from unnest(coalesce(domains, '{}')) d
+                  where d <> '' and lower(coalesce(email, '')) like '%@' || trim(d)
+               )
+               or exists (
+                 select 1 from unnest(coalesce(usernames, '{}')) u
+                  where u <> '' and lower(coalesce(username, '')) = trim(u)
+               )
+               -- Matched as a substring on purpose -- see the header.
+               or exists (
+                 select 1 from unnest(coalesce(patterns, '{}')) t
+                  where t <> ''
+                    and (lower(coalesce(username, '')) like '%' || trim(t) || '%'
+                      or lower(coalesce(email, ''))    like '%' || trim(t) || '%')
+               )
+             ) as flag
+        from players
+    ) rule
+   where p.id = rule.id
+     and p.is_internal is distinct from rule.flag;
+
+  get diagnostics flagged = row_count;
+
+  update players p
+     set excluded = true,
+         exclusion_reason = 'Correo desechable — registro fraudulento',
+         excluded_at = coalesce(p.excluded_at, now())
+   where not p.excluded
+     and p.exclusion_reason is null
+     and p.email is not null
+     and exists (
+       select 1 from unnest(coalesce(disposable, '{}')) d
+        where d <> '' and lower(p.email) like '%@' || trim(d)
+     );
+
+  return flagged;
+end;
+$function$;
+
+revoke execute on function public.refresh_internal_flags() from anon, public;
+grant execute on function public.refresh_internal_flags() to authenticated;
+
+select public.refresh_internal_flags();
+select public.assign_vip_tiers();
+
+-- ---------------------------------------------------------------------------
+-- And the tier table could silently drop a player
+-- ---------------------------------------------------------------------------
+--
+-- vip_tier_summary joined `real_players p on p.vip_tier = t.tier_name`, so a
+-- player whose vip_tier is null fell out of it entirely. That is every player
+-- until assign_vip_tiers() next runs -- including the three released above,
+-- which is how the tier table came to report 4,068 players and DOP 20,620,276
+-- against the book's 4,071 and 20,620,776, DOP 500 of it one real player.
+--
+-- COALESCE to 'Prospecto', which is what player_tier_progress has always done.
+-- After it: 4,071 in vip_tier_summary, lifecycle_summary and real_players
+-- alike, and total_deposits ties to house_totals exactly.
+create or replace view public.vip_tier_summary with (security_invoker = true) as
+ with tiered as (
+   select p.*, coalesce(p.vip_tier, 'Prospecto') as tier_key from real_players p
+ )
+ select t.tier_name,
+    t.tier_order,
+    t.wager_required_dop,
+    t.cashback_pct,
+    t.promotion_bonus_dop,
+    count(p.id)                                               as players,
+    coalesce(sum(p.total_deposit_amount), 0::numeric)         as total_deposits,
+    coalesce(avg(p.total_deposit_amount), 0::numeric)         as avg_deposit,
+    coalesce(sum(p.total_ggr_sportsbook), 0::numeric)         as total_ggr,
+    count(p.id) filter (where p.is_ftd)                       as ftd_players,
+    coalesce(sum(p.total_deposit_count), 0::bigint)           as deposit_count,
+    case when coalesce(sum(p.total_deposit_count), 0) > 0
+         then sum(p.total_deposit_amount) / sum(p.total_deposit_count)
+    end                                                       as avg_deposit_ticket,
+    coalesce(sum(k.tickets), 0::bigint)                       as tickets,
+    coalesce(sum(k.ticket_value), 0::numeric)                 as ticket_value,
+    coalesce(sum(k.cash_stake), 0::numeric)                   as cash_stake,
+    coalesce(sum(k.bonus_stake), 0::numeric)                  as bonus_stake,
+    case when coalesce(sum(k.tickets), 0) > 0
+         then sum(k.ticket_value) / sum(k.tickets)
+    end                                                       as avg_ticket
+   from vip_tiers t
+     left join tiered p on p.tier_key = t.tier_name
+     left join player_tickets k on k.id = p.id
+  group by t.tier_name, t.tier_order, t.wager_required_dop, t.cashback_pct, t.promotion_bonus_dop;
