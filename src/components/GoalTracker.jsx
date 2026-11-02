@@ -143,6 +143,19 @@ export default function GoalTracker({ s, lang, month = currentBudgetMonth() }) {
           );
         })}
       </div>
+      {/* The "(incompleto)" tag on the tile is a hover, and a hover is invisible
+          when the number is being checked against the backoffice. October read
+          DOP 11.8M against the backoffice's 15.0M for exactly this reason and
+          looked like a bug. Say it in the open, with the remedy. */}
+      {depositsPartial && (
+        <p style={{
+          color: "#D9A848", fontSize: 12, margin: "10px 0 0", maxWidth: 760,
+          background: "#231E14", border: "1px solid #D9A84833",
+          borderRadius: 10, padding: "10px 13px",
+        }}>
+          {s.goalTrack.depositsPartialFix}
+        </p>
+      )}
     </>
   );
 }

@@ -596,3 +596,66 @@ wrong pair.
   first stage-movement comparison is the import after it.
 - The general shape: anything *stored* keyed by `data_through` has to check that
   the anchor is not lagging. Anything merely *displayed* does not.
+
+## A `SET` clause on a hot predicate costs more than the query it protects
+
+Fourth time now, and the two worst offenders were the oldest functions in the
+database. `weekly_kpis` measured **3,753 ms** as `authenticated` — under the 8 s
+limit warm, over it cold, and climbing with every week of bets. The whole cost
+was two calls in the scan qual over `bets`:
+
+| `weekly_kpis`, as `authenticated` | |
+|---|---|
+| before | 3,753 ms |
+| `bet_counts_as_wagering()` inlined | 2,760 ms |
+| `operations_start()` inlined | **870 ms** |
+
+The Seq Scan on `bets` alone went **1,385 ms → 93 ms** for the same 54,699 rows.
+One page of Segments fell to 171 ms. Every other view filtering `bets` got the
+same benefit for nothing.
+
+- **`bet_counts_as_wagering()` was `IMMUTABLE` with `SET search_path`.** The body
+  compares a text value against four literals — it touches no table and no
+  schema-qualified object, so the `SET` protected nothing and only blocked
+  inlining. Rewritten with a standard SQL body (`BEGIN ATOMIC`), which is parsed
+  and bound at creation, so dropping the clause costs nothing even in principle.
+- **`operations_start()` was `STABLE SECURITY DEFINER` with a `SET` clause,
+  reading `app_settings`.** Either property alone blocks inlining, so
+  `local_day(bet_date) >= operations_start()` was a per-row call that queried a
+  table — and because the value was opaque, no expression index could serve the
+  predicate either. It is now the literal `date '2026-08-10'`, `IMMUTABLE`, with
+  a guard in the migration that fails if `app_settings.operations_start_date`
+  stops matching — the same shape `local_day()` uses for the timezone.
+  It also dropped out of both "definer function reachable by anon /
+  authenticated" lints, since it reads nothing and needs no elevated rights.
+- Both now carry `function_search_path_mutable`, deliberately, alongside
+  `local_day`, `local_week`, `lifecycle_stage` and `lifecycle_rank`.
+- Verified: `weekly_kpis` returns identical figures for all 12 weeks, and
+  `bet_counts_as_wagering` classifies all 56,839 bets exactly as the
+  hand-written predicate, zero disagreements.
+
+**The rule, generalised:** before adding `SET search_path` to a function, ask
+whether the body can resolve anything through the search path at all. If it only
+touches its own arguments and literals, the clause buys nothing and costs an
+inlining opportunity on every row of every scan that calls it.
+
+## The month-straddling week is a standing tax, and the screen has to say so
+
+October read **DOP 11,856,425** where the backoffice read **14,995,928** for the
+same month, and the dashboard was right. The week of 26 Oct – 1 Nov was loaded,
+primary, worth 3,867,480 — but six of its days are October and one is November,
+and the payments report is one aggregate per player with no dates inside the
+period, so those days cannot be separated. `deposits_monthly` therefore leaves
+the whole period out and October stops at `covered_to = 2026-10-25`.
+
+This recurs **every month**, so it is not a one-off to remember:
+
+- The remedy is unchanged: pull the report twice, 1st-to-month-end and
+  1st-of-next-to-Sunday, upload both, and `reconcile_deposit_period_scopes()`
+  demotes the straddling week and promotes the pair.
+- The screens used to say this only in a hover on a small "(incompleto)" tag.
+  A hover is invisible to someone comparing a number against the backoffice,
+  which is exactly when it is needed, so `GoalTracker` now renders it as a
+  visible line that names the remedy.
+- Nothing can fix this in the database. A split needs day-level deposits, which
+  only the transaction export has.
