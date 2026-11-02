@@ -293,6 +293,23 @@ export default function Imports({ s, lang }) {
         const { error: scopeErr } = await supabase.rpc("reconcile_deposit_period_scopes");
         if (scopeErr) throw scopeErr;
 
+        // What the screen reports has to be the scope the period *ended up*
+        // with, not the one guessed before reconciliation. Uploading the two
+        // halves of a month-straddling week overlaps the whole week, so both
+        // are inserted as validation -- and then reconciliation promotes them
+        // and demotes the week a moment later. Reporting the pre-reconcile
+        // guess told Marcos his upload "does not count toward any total" when
+        // it had in fact just closed October.
+        const { data: settled, error: settledErr } = await supabase
+          .from("deposit_periods")
+          .select("scope")
+          .eq("period_start", period.start)
+          .eq("period_end", period.end)
+          .limit(1)
+          .maybeSingle();
+        if (settledErr) throw settledErr;
+        const finalScope = settled?.scope ?? scope;
+
         const { error: refreshErr } = await supabase.rpc("refresh_player_deposit_totals");
         if (refreshErr) throw refreshErr;
 
@@ -303,7 +320,14 @@ export default function Imports({ s, lang }) {
         });
         if (logErr) throw logErr;
 
-        setPhase(source, "done", { rowCount: periods.length, unmatchedHeaders, unparsedPlayers, summary, period, scope });
+        setPhase(source, "done", {
+          rowCount: periods.length, unmatchedHeaders, unparsedPlayers, summary, period,
+          scope: finalScope,
+          // Inserted as a re-cut but promoted once it turned out to tile a
+          // wider period exactly: worth saying, because the upload looked
+          // redundant and was not.
+          promoted: scope === "validation" && finalScope === "primary",
+        });
       } else if (source === "Payments Export") {
         const { transactions, period, unmatchedHeaders, unparsedPlayers,
                 unexpectedCurrencies, expectedCurrency, summary } = await parsePaymentsExportFile(file);
@@ -598,6 +622,11 @@ export default function Imports({ s, lang }) {
                               (state.summary.players - state.summary.depositors).toLocaleString(),
                             )}
                           </div>
+                        )}
+                        {state.promoted && (
+                          // It overlapped a wider period on the way in and then
+                          // replaced it, because the halves tile it exactly.
+                          <div style={{ color: C.positive, marginTop: 4 }}>{s.periodPromoted}</div>
                         )}
                         {state.scope === "validation" && (
                           <>
