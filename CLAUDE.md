@@ -659,3 +659,71 @@ This recurs **every month**, so it is not a one-off to remember:
   visible line that names the remedy.
 - Nothing can fix this in the database. A split needs day-level deposits, which
   only the transaction export has.
+
+## A setting nobody applies is a note, not a rule
+
+`internal_name_patterns` was `test,prueba,demo,qa`, matched as a **substring**
+against username and email. Two of those four caught nothing real and three real
+players: `demo` inside the surnames **Baldemora** (twice) and **Demota**, and
+`qa` inside five random 10-character email prefixes.
+
+**The obvious fix was wrong, and only reading the data showed it.** Matching on
+word boundaries would have released the genuine test accounts too, because the
+house convention glues the pattern to a name: `cuentatesting`, `josetest10`,
+`marcostest1008`, `mbtest6@gmail.com`, `joseurenatesting@gmail.com` — DOP 5,000
+and DOP 1,500 of real test deposits among them. What separates the false
+positives is **length, not boundaries**. `demo` and `qa` are short enough to
+collide with Dominican surnames and random strings; `test` and `prueba` are not.
+
+Every `demo` match in the data was either a surname or the DEMON01..DEMON31
+ring, never a genuine demo account, so the pattern is `demon` now — it keeps the
+ring and drops the surnames. `qa` is gone entirely.
+
+- Of the 8 accounts released, **three were real players and five were burner
+  signups**. Releasing the five into the book would have been a worse error than
+  the one being fixed, so they were excluded under the reason that describes
+  them. Check what a flag fix *releases*, not only what it stops flagging.
+
+### The bigger thing that fix uncovered
+
+`disposable_email_domains` was being read by nothing. The 138 accounts marked
+"Correo desechable — registro fraudulento" were excluded by a one-off sweep in
+August, and **adding a domain to `app_settings` did nothing on its own** — so a
+whole new domain, tanpony.com, reached 100 accounts unnoticed.
+
+Applied as a rule, with Marcos's approval after seeing the cost:
+
+| | before | after |
+|---|---|---|
+| book | 4,742 | **4,071** |
+| excluded | 145 | 847 |
+| October registrations | 2,749 | **2,128** |
+| September registrations | 847 | 847 |
+| deposits, all time | 20,621,176 | 20,620,776 |
+
+707 accounts across seven domains still taking signups through 1 November,
+holding **DOP 400 between all of them**. October growth against September goes
+from +224% to **+151%**, and September had none of them — the ring arrived in
+October, which is most of why the month looked as good as it did.
+
+- **Only DOP 400 of money moved.** A fraud ring shows up in the registration
+  count and the cost per registration, not in deposits, which is exactly what
+  makes it easy to miss.
+- The rule is **one-directional**: it only ever sets `excluded`, never clears
+  it, and skips any row already carrying an `exclusion_reason`, so an operator's
+  decision through `set_player_excluded()` is never overwritten.
+- A figure this size is the owner's call. It was written, tested in a
+  `begin … rollback`, and then put to Marcos rather than shipped as a side
+  effect of fixing three surnames.
+
+### And a tier table that could lose a player
+
+`vip_tier_summary` joined `real_players p on p.vip_tier = t.tier_name`, so a
+player whose `vip_tier` is null fell out of it entirely — which is every player
+until `assign_vip_tiers()` next runs, including anyone just released back into
+the book. The tier table read 4,068 players and DOP 20,620,276 against the
+book's 4,071 and 20,620,776, DOP 500 of it one real player.
+
+It now coalesces to `'Prospecto'`, which `player_tier_progress` has always done.
+**Any new view that groups by `vip_tier` needs the same coalesce**, or it will
+silently drop players and stop tying to `house_totals`.
