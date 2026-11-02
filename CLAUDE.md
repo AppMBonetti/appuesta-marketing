@@ -385,3 +385,149 @@ player exists nowhere else. That changes the defaults.
 - A note's age is measured against **`CURRENT_DATE`**, unlike every player
   recency counter. Someone typed it at a real moment; the calendar moving is
   news here.
+
+## `count(*)` hides the work a page actually does — the third disguise
+
+The sport-legs cache was signed off at **337 ms a page** and Segments was still
+timing out. That figure was measured with `count()`, and `count()` never builds
+the output rows. What Segments really runs is
+
+```sql
+select * from player_lifecycle order by deposits desc, id asc limit 1000;
+```
+
+which measured **3,190 ms**, five pages of it, ~16 s against the 8 s
+`statement_timeout`. Naming the expensive columns is not enough once a page
+fetches rows rather than counting them: **measure the query the page sends.**
+
+Two causes, both the inlining trap one more level down:
+
+- **`data_through` was re-planned once per textual reference.** The plan carried
+  21 separate InitPlan groups, each aggregating `players`. The note above says
+  its aggregates "become InitPlans" — true, but one set per mention of `dt.d`,
+  and `player_lifecycle` mentions it in a dozen `CASE` arms. Putting the anchor
+  in a `MATERIALIZED` CTE collapsed them to one: **3,190 → 2,015 ms**.
+- **`min_qualifying_deposit()` is `STABLE` with a `SET` clause**, so it is not
+  inlinable and ran **once per row** — 4,159 calls, each querying `app_settings`.
+  Hoisted into the same anchor CTE as a column: **2,015 → 91 ms**.
+
+That second one was nearly invisible in the plan. The `Nested Loop` building
+`scored` read 876 ms while its children totalled 60 ms; the missing 816 ms was
+the projection, which `EXPLAIN` attributes to no node of its own. **A parent
+node far slower than the sum of its children means a per-row expression, not a
+join.**
+
+- Six views still call `min_qualifying_deposit()` per row — the four cohort
+  views, `cohort_deposit_retention_period` and `dashboard_health`. None is on a
+  page anyone has reported slow. Fix them when one is, not before.
+- `player_bet_profile` also re-aggregated all 42,593 wagering bets on every
+  read, `percentile_cont` and all. Same situation the sport legs were in, same
+  answer: `player_bet_stats`, rebuilt by `refresh_player_bet_stats()` at the end
+  of the Altenar import beside `refresh_player_sport_counts()`. **Nothing else
+  keeps it current.** Checked against the live aggregate across all 2,210
+  betting players: all eight columns matched with zero differences.
+
+## "Nuevo" now means what Marcos says it means
+
+`New` meant "one deposit and the FTD was under 30 days ago", which put a player
+with one deposit and 40 settled bets beside someone who deposited once and never
+played. Of the 89 in New, **53 had five or more bets**. It now means: deposited
+inside the last 7 days, exactly one deposit ever, fewer than 5 bets. Everyone
+else who deposited inside 7 days is Active.
+
+| | before | after |
+|---|---|---|
+| New | 89 | **36** |
+| Active | 265 | **318** |
+
+Those 53 are the only rows that move; checked before switching.
+
+- **`Casual` is gone from the ladder**, and could never have held anyone: it
+  required one deposit whose FTD was 30+ days old, but with a single deposit the
+  FTD *is* the last deposit. It survives as the `ELSE` in `lifecycle_stage()` so
+  nothing falls through to null, and is absent from `STAGES`.
+- The stage lives in **`lifecycle_stage(deposit_count, days_since_deposit, bets)`**
+  so `player_lifecycle` and `player_tier_progress` cannot drift. `IMMUTABLE`,
+  **no `SET` clause** — adding one would stop it inlining, which is the whole
+  point. It and `lifecycle_rank()` therefore carry a
+  `function_search_path_mutable` warning from the linter, exactly as `local_day`
+  and `local_week` do, for the same reason: they touch no table and no
+  schema-qualified object, so there is nothing a search path could redirect.
+- The two views are checked against each other: the stage agrees on all 4,159
+  players.
+
+## Stage history starts the day it is written, and cannot start earlier
+
+`player_stage_history` keeps one row per player per import, keyed by
+`data_through` rather than by the clock. `player_stage_moves` compares each
+player against **their own** previous capture, so someone who first appears in
+the second import has no phantom move.
+
+**It is not backfilled, and cannot be.** The stage is a threshold on days since
+the last deposit, and the player report only ever carries the *latest* deposit
+date, so a player's stage on 11 October is not recoverable from what we hold
+today. `deposit_periods` knows which week a player deposited in but not which
+day, and the thresholds are 8/15/30 days — dating a deposit to its period end
+would move players across stage lines on invented precision.
+
+- Written by `snapshot_player_stages()` at the end of the **player report**
+  import, because that is the only import that moves a stage.
+- Keyed on the data cut-off, so re-uploading the same week corrects that week's
+  row instead of adding a second one.
+- The screens say so rather than showing a zero: with one capture the movement
+  panel explains that the next import is what makes the question answerable.
+- `lifecycle_rank()` orders stages by health, so a move reads as a direction.
+  `Registered` is the floor and `Churned` sits above it — a churned player has
+  paid once, and the climb back is shorter.
+- No foreign key to `players(id)`, for the two reasons `player_notes` has none.
+
+## A ticket is a bet slip, and the money on it is two kinds
+
+`player_tickets` counts bet slips and splits their value into `stake` (the
+player's own money) and `bonus_stake` (promotional), which are additive — the
+same pair `player_tier_progress` already sums for the trailing wager. Rolled up
+per VIP tier in `vip_tier_summary` and per deposit period in
+`deposit_period_tickets`.
+
+- **Bets carry a real `bet_date`; deposits do not.** The payments report sums a
+  range with no day on it, so the ticket columns beside each deposit period are
+  attributed exactly while the deposits beside them are not.
+- The bonus share is worth reading on its own: it ran ~4% through August and
+  September and **13–17% across October**.
+- `avg_deposit_ticket` is new and `avg_deposit` is not the same thing —
+  total deposited over *deposits made*, not over players. The old column
+  answered a different question and is no longer shown on the tier table.
+- **`vip_tier_summary` was joining `players`, not `real_players`**, so the tier
+  table counted 4,298 players and DOP 16,905,042 against the book's 4,159 and
+  16,855,042 — 139 internal and excluded accounts, DOP 50,000 of their money, on
+  a page that gets checked against the backoffice. It now ties exactly.
+
+## The deposit funnel and "FTDs this month" are two different questions
+
+The funnel follows a **registration cohort**: of the people who signed up in
+these days, how many went on to pay. Marcos reads the FTD bar as "this month's
+FTDs", which is a different figure — first deposits *made* in the window,
+whoever they came from. For October 1–25 that is **427** against the funnel's
+**370**, and the gap is September's signups paying in October.
+
+Both are now on screen, the cohort note says which is which, and the growth
+figures match the Overview.
+
+- **The period filter is anchored to the data** (`dataAnchoredRange`), not to
+  the clock. Picking "this week" off the calendar asked for 26 Oct – 1 Nov
+  against data through the 25th, so the week filter rendered an empty page and
+  read as broken. Week now means the last week there are numbers for, month the
+  month that week sits in, trimmed where the data stops, prior cut to the same
+  length.
+- **PostgREST cannot call `local_day()`**, so a range filter on a timestamptz
+  column has to carry the offset itself. Comparing against a bare date string
+  compares in UTC and moves the boundary four hours: the funnel counted 2,268
+  registrations for October where `local_day()` counts 2,249. `dayStartUTC()`
+  and `dayAfterUTC()` in `period.js` are the only correct way to filter a
+  timestamp column by local day from the client.
+- **`avg_deposit_amount` is a dead column.** The report stopped supplying it and
+  the importer never maps it, so all 4,403 rows are null — which is why that
+  card read DOP 0. Derived now from the two figures that are real.
+- `scripts/verify-period-compare.mjs` covers the anchoring, 20 cases.
+  Mutation-tested: anchoring to the clock breaks 7, dropping the length match
+  breaks 2.

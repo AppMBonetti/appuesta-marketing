@@ -90,6 +90,70 @@ export function matchPriorLength(prior, days) {
   return end < prior.end ? { start: prior.start, end } : prior;
 }
 
+/**
+ * The instant a Santo Domingo day begins, as UTC.
+ *
+ * PostgREST cannot call local_day(), so a range filter on a timestamptz column
+ * has to carry the offset itself. Comparing against a bare date string compares
+ * in UTC and moves the boundary four hours: the registration funnel counted
+ * 2,268 for October where local_day() counts 2,249, because the small hours of
+ * 1 October and 1 November landed on the wrong side.
+ *
+ * The Dominican Republic has been on AST (UTC-4) year-round since 2000, with no
+ * daylight saving, which is the same assumption local_day() hardcodes.
+ */
+export const dayStartUTC = isoDate => `${isoDate}T04:00:00Z`;
+
+/** Exclusive upper bound for a range whose last included local day is `endISO`. */
+export const dayAfterUTC = endISO => dayStartUTC(addDays(endISO, 1));
+
+/** The Monday-to-Sunday week, and the calendar month, that hold a given day. */
+const weekBoundsOf = day => ({ start: weekStartOf(day), end: addDays(weekStartOf(day), 6) });
+function monthBoundsOf(day) {
+  const start = `${String(day).slice(0, 7)}-01`;
+  const next = new Date(`${start}T00:00:00Z`);
+  next.setUTCMonth(next.getUTCMonth() + 1);
+  return { start, end: addDays(next.toISOString().slice(0, 10), -1) };
+}
+
+/**
+ * The week or month a set of figures should describe, anchored to the last day
+ * the data covers rather than to today.
+ *
+ * Picking "this week" off the clock asked for 26 Oct – 1 Nov while the reports
+ * stopped on the 25th, so the week filter showed an empty page and the month
+ * filter compared 25 days against a whole month. Both read as though the filter
+ * did nothing. Anchored to the data, "week" means the last week there are
+ * numbers for and "month" the month that week sits in, trimmed where the data
+ * stops — and the prior span is cut to the same number of days so the
+ * comparison is like for like.
+ *
+ * Ends are inclusive, unlike getPeriodRange().
+ */
+export function dataAnchoredRange(period, through, customStart, customEnd) {
+  if (period === "custom") {
+    if (!customStart || !customEnd || customStart > customEnd) return null;
+    const covered = clampToCoverage({ start: customStart, end: customEnd }, through);
+    return { current: covered, previous: null, clamped: covered.clamped === true };
+  }
+
+  // No coverage yet: fall back to the calendar, which is all there is to go on.
+  const anchor = through || new Date().toISOString().slice(0, 10);
+  const bounds = period === "month" ? monthBoundsOf(anchor) : weekBoundsOf(anchor);
+  const covered = clampToCoverage(bounds, through);
+  const days = daysBetween(covered.start, covered.end);
+
+  const priorFull = period === "month"
+    ? monthBoundsOf(addDays(bounds.start, -1))
+    : weekBoundsOf(addDays(bounds.start, -7));
+
+  return {
+    current: covered,
+    previous: matchPriorLength(priorFull, days),
+    clamped: covered.clamped === true,
+  };
+}
+
 /** Budgets are tracked from August 2026 onward — nothing earlier was planned in this tool. */
 export const BUDGET_START_MONTH = "2026-08-01";
 

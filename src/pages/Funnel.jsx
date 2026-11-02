@@ -5,7 +5,7 @@ import {
 import { Wallet, TrendingUp, Coins, Users, Percent, PiggyBank, ArrowLeftRight } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
-import { getPeriodRange, formatWeek } from "../lib/period";
+import { dataAnchoredRange, dayStartUTC, dayAfterUTC, dateRangeLabel, formatWeek } from "../lib/period";
 import { SectionHeading, Panel, KpiCard, PeriodBar, Spinner, fmtDOP, deltaOf, EmptyState } from "../components/ui";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "../components/SortHeader";
@@ -13,13 +13,37 @@ import GgrReconciliation from "../components/GgrReconciliation";
 import DepositTrends from "../components/DepositTrends";
 import DepositDaily from "../components/DepositDaily";
 
+// `start` and `end` are inclusive local days; the bounds carry the Santo Domingo
+// offset so the count agrees with local_day() in SQL rather than slicing the
+// day in UTC.
 async function countDepositStage(minCount, start, end) {
   const { count, error } = await supabase
     .from("real_players")
     .select("*", { count: "exact", head: true })
-    .gte("registered_at", start)
-    .lt("registered_at", end)
+    .gte("registered_at", dayStartUTC(start))
+    .lt("registered_at", dayAfterUTC(end))
     .gte("total_deposit_count", minCount);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
+ * First-time depositors *in* a window, which is a different question from the
+ * funnel's.
+ *
+ * The funnel follows a registration cohort: of the people who signed up in
+ * these days, how many went on to pay. This counts the FTDs that landed in
+ * these days whoever they are, so someone who registered in September and first
+ * deposited in October is in this figure and not in the funnel. For October
+ * that is 427 against the funnel's 370, and the gap is the whole point --
+ * Marcos reads the first as "this month's FTDs".
+ */
+async function countFtdsInRange(start, end) {
+  const { count, error } = await supabase
+    .from("real_players")
+    .select("*", { count: "exact", head: true })
+    .gte("first_deposit_date", dayStartUTC(start))
+    .lt("first_deposit_date", dayAfterUTC(end));
   if (error) throw error;
   return count ?? 0;
 }
@@ -61,15 +85,26 @@ const NET_CASH_SORT_COLUMNS = [
   { key: "payCount", align: "right", label: s => s.netCashCols.payCount, value: r => r.payoutCount },
   { key: "payAmount", align: "right", label: s => s.netCashCols.payAmount, value: r => r.payoutAmount },
   { key: "net", align: "right", label: s => s.netCashCols.net, value: r => r.net },
+  // How much play the money bought. Deposits in this report are an aggregate
+  // over a date range; bets carry a real date, so they attribute exactly.
+  { key: "tickets", align: "right", label: s => s.netCashCols.tickets, value: r => r.tickets },
+  { key: "avgTicket", align: "right", label: s => s.netCashCols.avgTicket, value: r => r.avgTicket },
 ];
 
 // The two tier tables share their rows but not their columns: one view reads
 // them as deposits, the other as GGR, so each keeps its own sort.
 const DEP_TIER_SORT_COLUMNS = [
   { key: "tier", kind: "text", label: s => s.vipCols.tier, value: t => t.tier_name },
-  { key: "deposited", label: (s, lang) => (lang === "es" ? "Total depositado" : "Total deposited"), value: t => t.total_deposits },
-  { key: "avgDeposit", label: (s, lang) => (lang === "es" ? "Depósito promedio" : "Avg deposit"), value: t => t.avg_deposit },
   { key: "players", label: s => s.vipCols.players, value: t => t.players },
+  { key: "deposited", label: s => s.tierMetrics.deposited, value: t => t.total_deposits },
+  { key: "depositCount", label: s => s.tierMetrics.depositCount, value: t => t.deposit_count },
+  // The average *deposit*, not the average of per-player averages: total
+  // deposited over deposits made. avg_deposit, the old column, answered a
+  // different question and is no longer shown here.
+  { key: "avgDepositTicket", label: s => s.tierMetrics.avgDeposit, value: t => t.avg_deposit_ticket },
+  { key: "tickets", label: s => s.tierMetrics.tickets, value: t => t.tickets },
+  { key: "avgTicket", label: s => s.tierMetrics.avgTicket, value: t => t.avg_ticket },
+  { key: "cashStake", label: s => s.tierMetrics.cashVsBonus, value: t => t.cash_stake },
 ];
 
 const GGR_TIER_SORT_COLUMNS = [
@@ -97,6 +132,7 @@ export default function Funnel({ s, lang }) {
   const [depositMonths, setDepositMonths] = useState([]);
   const [depositDays, setDepositDays] = useState([]);
   const [depositMethods, setDepositMethods] = useState([]);
+  const [periodTickets, setPeriodTickets] = useState([]);
 
   const stages = [
     { key: "reg", min: 0, stageEs: "Registro", stageEn: "Registration" },
@@ -113,33 +149,56 @@ export default function Funnel({ s, lang }) {
 
     (async () => {
       try {
-        const range = getPeriodRange(period, customStart, customEnd);
+        // The week and the month are the last ones the reports cover, not the
+        // ones the calendar is in. Asking for the calendar week gave 26 Oct -
+        // 1 Nov against data through the 25th, so the filter looked dead.
+        const { data: dt } = await supabase.from("data_through").select("d").maybeSingle();
+        const through = dt?.d || null;
+        const range = dataAnchoredRange(period, through, customStart, customEnd);
+        if (!range) { if (active) { setData(null); setLoading(false); } return; }
         const { current, previous } = range;
 
         const currentCounts = await Promise.all(stages.map(st => countDepositStage(st.min, current.start, current.end)));
         const previousCounts = previous ? await Promise.all(stages.map(st => countDepositStage(st.min, previous.start, previous.end))) : stages.map(() => null);
 
+        const [ftdsNow, ftdsBefore] = await Promise.all([
+          countFtdsInRange(current.start, current.end),
+          previous ? countFtdsInRange(previous.start, previous.end) : Promise.resolve(null),
+        ]);
+
+        // avg_deposit_amount is never written by the importer -- the report
+        // dropped the column, and all 4,403 rows hold null, which is why this
+        // card read DOP 0. Derived from the two figures that are real: total
+        // deposited over deposits made, which is the average deposit rather
+        // than the average of per-player averages.
         const { data: depRows, error: depErr } = await supabase
           .from("real_players")
-          .select("avg_deposit_amount, avg_sportsbook_bet_amount")
-          .gte("registered_at", current.start)
-          .lt("registered_at", current.end)
+          .select("total_deposit_amount, total_deposit_count, avg_sportsbook_bet_amount")
+          .gte("registered_at", dayStartUTC(current.start))
+          .lt("registered_at", dayAfterUTC(current.end))
           .eq("is_ftd", true);
         if (depErr) throw depErr;
 
-        const avgDeposit = depRows.length ? depRows.reduce((sum, r) => sum + (r.avg_deposit_amount || 0), 0) / depRows.length : null;
-        const avgBet = depRows.length ? depRows.reduce((sum, r) => sum + (r.avg_sportsbook_bet_amount || 0), 0) / depRows.length : null;
+        const depAmount = depRows.reduce((sum, r) => sum + (Number(r.total_deposit_amount) || 0), 0);
+        const depCount = depRows.reduce((sum, r) => sum + (Number(r.total_deposit_count) || 0), 0);
+        const avgDeposit = depCount > 0 ? depAmount / depCount : null;
+        const betRows = depRows.filter(r => r.avg_sportsbook_bet_amount != null);
+        const avgBet = betRows.length
+          ? betRows.reduce((sum, r) => sum + Number(r.avg_sportsbook_bet_amount), 0) / betRows.length
+          : null;
 
         if (!active) return;
         setData({
           current: Object.fromEntries(stages.map((st, i) => [st.key, currentCounts[i]])),
           previous: Object.fromEntries(stages.map((st, i) => [st.key, previousCounts[i]])),
           avgDeposit, avgBet,
+          ftdsNow, ftdsBefore,
+          range: current, priorRange: previous, clamped: range.clamped, through,
         });
 
         // Everything below is cumulative rather than period-scoped: tier totals,
         // the weekly series, and the GGR leaderboard all describe the book to date.
-        const [tiersRes, dailyRes, ftdRes, betsRes, topRes, weekRes, monthRes, dayRes, methodRes] = await Promise.all([
+        const [tiersRes, dailyRes, ftdRes, betsRes, topRes, weekRes, monthRes, dayRes, methodRes, periodTicketRes] = await Promise.all([
           supabase.from("vip_tier_summary").select("*").order("tier_order"),
           supabase.from("deposits_by_period").select("*").order("period_start"),
           supabase.from("ftd_weekly").select("*").order("week_start"),
@@ -152,6 +211,10 @@ export default function Funnel({ s, lang }) {
           supabase.from("deposits_monthly").select("*").order("month_start"),
           supabase.from("deposits_daily").select("*").order("day"),
           supabase.from("deposit_method_performance").select("*"),
+          // Bet slips placed inside each deposit period. Deposits in that
+          // report are an aggregate over a range with no day on them; bets
+          // carry a real bet_date, so these line up exactly.
+          supabase.from("deposit_period_tickets").select("*"),
         ]);
         if (tiersRes.error) throw tiersRes.error;
         if (dailyRes.error) throw dailyRes.error;
@@ -164,6 +227,7 @@ export default function Funnel({ s, lang }) {
         // and the sections they feed do not render.
         if (dayRes.error) throw dayRes.error;
         if (methodRes.error) throw methodRes.error;
+        if (periodTicketRes.error) throw periodTicketRes.error;
 
         if (!active) return;
         setTierRows(tiersRes.data || []);
@@ -177,6 +241,7 @@ export default function Funnel({ s, lang }) {
         setDepositMonths(monthRes.data || []);
         setDepositDays(dayRes.data || []);
         setDepositMethods(methodRes.data || []);
+        setPeriodTickets(periodTicketRes.data || []);
       } catch (e) {
         if (active) setError(e.message);
       } finally {
@@ -207,17 +272,28 @@ export default function Funnel({ s, lang }) {
   // Withdrawals come from the same payments report rows as deposits, so net
   // cash is only ever stated over the periods that report covers -- never a
   // running total across gaps.
-  const netCashRows = depositPeriods.map(r => ({
-    key: `${r.period_start}|${r.period_end}`,
-    start: r.period_start,
-    end: r.period_end,
-    depositors: Number(r.depositors) || 0,
-    depositCount: Number(r.deposit_count) || 0,
-    depositAmount: Number(r.deposit_amount) || 0,
-    payoutCount: Number(r.payout_count) || 0,
-    payoutAmount: Number(r.payout_amount) || 0,
-    net: Number(r.net_cash) || 0,
-  }));
+  const ticketsByPeriod = Object.fromEntries(
+    periodTickets.map(t => [`${t.period_start}|${t.period_end}`, t])
+  );
+  const netCashRows = depositPeriods.map(r => {
+    const key = `${r.period_start}|${r.period_end}`;
+    const t = ticketsByPeriod[key];
+    return {
+      key,
+      start: r.period_start,
+      end: r.period_end,
+      depositors: Number(r.depositors) || 0,
+      depositCount: Number(r.deposit_count) || 0,
+      depositAmount: Number(r.deposit_amount) || 0,
+      payoutCount: Number(r.payout_count) || 0,
+      payoutAmount: Number(r.payout_amount) || 0,
+      net: Number(r.net_cash) || 0,
+      tickets: t ? Number(t.tickets) || 0 : null,
+      avgTicket: t?.avg_ticket == null ? null : Number(t.avg_ticket),
+      bonusStake: t ? Number(t.bonus_stake) || 0 : null,
+      ticketValue: t ? Number(t.ticket_value) || 0 : null,
+    };
+  });
   const netCashTotal = netCashRows.reduce((sum, r) => sum + r.net, 0);
   const hasPayoutData = netCashRows.some(r => r.payoutCount > 0);
 
@@ -264,14 +340,52 @@ export default function Funnel({ s, lang }) {
 
           <SectionHeading title={s.dep.funnelTitle} subtitle={s.dep.funnelSub} />
           <PeriodBar {...periodBarProps} />
-          <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
+
+          {/* Which days these figures actually describe, and which days they
+              are measured against. Without it the month filter read "vs. mes
+              anterior" while comparing 25 days to 30. */}
+          {data.range && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 16, fontSize: 12, color: C.inkDim }}>
+              <span style={{ border: `1px solid ${C.panelBorder}`, borderRadius: 99, padding: "4px 11px" }}>
+                {dateRangeLabel(data.range.start, data.range.end, lang)}
+              </span>
+              {data.priorRange && (
+                <span style={{ color: C.inkFaint }}>
+                  {s.ov.comparedToRange.replace("{r}", dateRangeLabel(data.priorRange.start, data.priorRange.end, lang))}
+                </span>
+              )}
+              {data.clamped && (
+                <span style={{ color: "#D9A848" }}>{s.ov.clampedToData}</span>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
+            {/* The FTDs that landed in these days, whoever they are -- which is
+                not what the funnel below counts. The funnel follows the people
+                who registered in this window; this counts first deposits made
+                in it, so September's signups paying in October are here and not
+                there. */}
+            <KpiCard icon={Users} label={s.dep.ftdsInPeriod} value={data.ftdsNow.toLocaleString()}
+              delta={deltaOf(data.ftdsNow, data.ftdsBefore)?.label}
+              deltaGood={deltaOf(data.ftdsNow, data.ftdsBefore)?.positive !== false} />
             <KpiCard icon={Wallet} label={s.avgDeposit} value={fmtDOP(data.avgDeposit)} />
             <KpiCard icon={TrendingUp} label={s.avgBet} value={fmtDOP(data.avgBet)} />
+          </div>
+
+          {/* These two do not move with the filter, so they are set apart from
+              the cards above rather than sitting in the same row looking as
+              though they did. */}
+          <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
             <KpiCard icon={PiggyBank} label={s.dep.allTimeDeposits} value={fmtDOP(totalDeposits)} />
             {hasPayoutData && (
               <KpiCard icon={ArrowLeftRight} label={s.dep.allTimeNetCash} value={fmtDOP(netCashTotal)} />
             )}
           </div>
+
+          <p style={{ color: C.inkFaint, fontSize: 11.5, margin: "0 0 14px", maxWidth: 700 }}>
+            {s.dep.funnelCohortNote}
+          </p>
 
           {maxFunnel === 0 ? (
             <div style={{ marginBottom: 28 }}><EmptyState s={s} /></div>
@@ -320,6 +434,18 @@ export default function Funnel({ s, lang }) {
                         <td style={{ ...numCell, color: r.net < 0 ? C.negative : C.positive }}>
                           {fmtDOP(r.net)}
                         </td>
+                        <td style={dimCell}>{r.tickets == null ? "—" : r.tickets.toLocaleString()}</td>
+                        <td style={numCell}>
+                          {r.avgTicket == null ? "—" : fmtDOP(r.avgTicket)}
+                          {/* A ticket part-paid with a promotional bonus is not
+                              the same money as one the player funded, so the
+                              split is shown rather than one number. */}
+                          {r.bonusStake > 0 && r.ticketValue > 0 && (
+                            <div style={{ color: C.inkFaint, fontSize: 11 }}>
+                              {s.netCashCols.bonusShare.replace("{p}", String(Math.round((r.bonusStake / r.ticketValue) * 100)))}
+                            </div>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -343,14 +469,33 @@ export default function Funnel({ s, lang }) {
                     toggle={depTierToggle} s={s} lang={lang} th={thStyle} />
                 </thead>
                 <tbody>
-                  {depTierSorted.map(t => (
-                    <tr key={t.tier_name}>
-                      <td style={{ padding: "10px 16px" }}>{t.tier_name}</td>
-                      <td style={{ padding: "10px 16px", fontWeight: 500 }}>{fmtDOP(t.total_deposits)}</td>
-                      <td style={{ padding: "10px 16px", color: C.inkDim }}>{fmtDOP(t.avg_deposit)}</td>
-                      <td style={{ padding: "10px 16px", color: C.inkDim }}>{Number(t.players).toLocaleString()}</td>
-                    </tr>
-                  ))}
+                  {depTierSorted.map(t => {
+                    const value = Number(t.ticket_value) || 0;
+                    const bonus = Number(t.bonus_stake) || 0;
+                    return (
+                      <tr key={t.tier_name}>
+                        <td style={{ padding: "10px 16px" }}>{t.tier_name}</td>
+                        <td style={{ padding: "10px 16px", color: C.inkDim }}>{Number(t.players).toLocaleString()}</td>
+                        <td style={{ padding: "10px 16px", fontWeight: 500 }}>{fmtDOP(t.total_deposits)}</td>
+                        <td style={{ padding: "10px 16px", color: C.inkDim }}>{Number(t.deposit_count).toLocaleString()}</td>
+                        <td style={{ padding: "10px 16px" }}>{t.avg_deposit_ticket == null ? "—" : fmtDOP(t.avg_deposit_ticket)}</td>
+                        <td style={{ padding: "10px 16px", color: C.inkDim }}>{Number(t.tickets).toLocaleString()}</td>
+                        <td style={{ padding: "10px 16px", fontWeight: 500 }}>{t.avg_ticket == null ? "—" : fmtDOP(t.avg_ticket)}</td>
+                        <td style={{ padding: "10px 16px", color: C.inkDim }}>
+                          {value === 0 ? "—" : (
+                            <>
+                              {fmtDOP(t.cash_stake)}
+                              <span style={{ color: C.inkFaint, fontSize: 11, marginLeft: 5 }}>
+                                {s.tierMetrics.bonusOf
+                                  .replace("{amt}", fmtDOP(bonus))
+                                  .replace("{p}", String(Math.round((bonus / value) * 100)))}
+                              </span>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </Panel>

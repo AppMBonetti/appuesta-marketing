@@ -10,7 +10,7 @@
 // Nothing about that looks wrong on screen -- both numbers are real, the
 // arithmetic is right, and only the windows disagree. That is exactly the kind
 // of mistake a test catches and a reading does not.
-import { clampToCoverage, matchPriorLength, daysBetween } from "../src/lib/period.js";
+import { clampToCoverage, matchPriorLength, daysBetween, dataAnchoredRange } from "../src/lib/period.js";
 
 const failures = [];
 const check = (label, got, want) => {
@@ -47,9 +47,43 @@ check("a short prior is never extended", matchPriorLength({ start: "2026-02-01",
 // Missing coverage must not silently empty the range.
 check("no anchor, no clamp", clampToCoverage(october, null), october);
 
+// The period filter is anchored to the data, not to the clock. Picking "this
+// week" off the calendar asked for 26 Oct - 1 Nov against data through the
+// 25th, so the week filter rendered an empty page and looked broken.
+const THROUGH = "2026-10-25"; // a Sunday
+const wk = dataAnchoredRange("week", THROUGH);
+check("week anchors to the last week with data",
+  { start: wk.current.start, end: wk.current.end }, { start: "2026-10-19", end: "2026-10-25" });
+check("a week the data covers to its end is not marked as cut", wk.clamped, false);
+check("and compares against the week before",
+  { start: wk.previous.start, end: wk.previous.end }, { start: "2026-10-12", end: "2026-10-18" });
+
+// Mid-week coverage: the window stops where the data does and the prior week is
+// cut to the same count from its own Monday, not to a whole week.
+const midWeek = dataAnchoredRange("week", "2026-10-22"); // a Thursday
+check("a part-covered week stops at the data",
+  { start: midWeek.current.start, end: midWeek.current.end }, { start: "2026-10-19", end: "2026-10-22" });
+check("and says it was cut", midWeek.clamped, true);
+check("its prior week is cut to the same 4 days",
+  { start: midWeek.previous.start, end: midWeek.previous.end }, { start: "2026-10-12", end: "2026-10-15" });
+
+const mth = dataAnchoredRange("month", THROUGH);
+check("month anchors to the month the data ends in",
+  { start: mth.current.start, end: mth.current.end }, { start: "2026-10-01", end: "2026-10-25" });
+check("against the same days of the month before",
+  { start: mth.previous.start, end: mth.previous.end }, { start: "2026-09-01", end: "2026-09-25" });
+
+// A custom span is answered as typed, trimmed at the data, and has no prior.
+const custom = dataAnchoredRange("custom", THROUGH, "2026-10-01", "2026-10-31");
+check("a custom span is trimmed at the data",
+  { start: custom.current.start, end: custom.current.end }, { start: "2026-10-01", end: "2026-10-25" });
+check("a custom span has no comparison period", custom.previous, null);
+check("an inverted custom span is refused",
+  dataAnchoredRange("custom", THROUGH, "2026-10-31", "2026-10-01"), null);
+
 if (failures.length) {
   console.error("verify-period-compare FAILED:");
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log("verify-period-compare: 9 cases pass, a month in progress is compared like for like.");
+console.log("verify-period-compare: 20 cases pass, periods are anchored to the data and compared like for like.");

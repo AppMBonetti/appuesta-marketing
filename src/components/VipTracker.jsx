@@ -7,6 +7,7 @@ import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "./SortHeader";
 import PlayerNotes, { pinnedNote, countLabel } from "./PlayerNotes";
 import { Panel, Spinner, fmtDOP } from "./ui";
+import { STAGE_COLORS } from "../lib/lifecycle";
 
 /**
  * The people at the top of the VIP ladder, and whether each one is still here.
@@ -25,13 +26,10 @@ import { Panel, Spinner, fmtDOP } from "./ui";
  *   Tiers come from trailing 90-day wagering, so a VIP who goes quiet does not
  *   sit here looking inactive — they leave the list.
  */
-const STAGE_COLORS = {
-  Registered: "#8B93A3", New: "#6E9BF2", Casual: "#B073F0", Active: "#3ECB9E",
-  Cooling: "#D9A848", "At risk": "#F2994A", Churned: "#E4022B",
-};
-
-// Worst first: this page is read to decide who needs chasing today.
-const STAGE_ORDER = ["Churned", "At risk", "Cooling", "Casual", "New", "Active", "Registered"];
+// Worst first: this page is read to decide who needs chasing today, which is
+// the opposite of the funnel order STAGES uses. The colours are shared so a
+// stage cannot be one colour here and another on Segments.
+const STAGE_ORDER = ["Churned", "At risk", "Cooling", "New", "Active", "Registered"];
 const NEEDS_ATTENTION = ["Churned", "At risk", "Cooling"];
 
 /** A cushion thinner than this share of the tier floor counts as "about to drop". */
