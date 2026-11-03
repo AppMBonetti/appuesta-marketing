@@ -7,7 +7,9 @@ import { addDays } from "../lib/period";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "../components/SortHeader";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
+import RestrictButton from "../components/RestrictButton";
 import { STAGES, STAGE_COLORS } from "../lib/lifecycle";
+import { useSticky } from "../lib/sticky";
 
 // Ordered by where a player sits in the funnel, not alphabetically, so the
 // strip reads as a lifecycle rather than a list.
@@ -125,7 +127,7 @@ function fmtDay(value, lang) {
 
 const EMPTY_FILTERS = {
   stage: "", tier: "", sport: "", search: "", minDeposits: "", minBets: "",
-  login: "", engaged: false, hideRestricted: false,
+  login: "", engaged: false,
 };
 
 export default function Segments({ s, lang }) {
@@ -136,6 +138,11 @@ export default function Segments({ s, lang }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
+  // Outside `filters`, and so outside "clear filters", on purpose: a player is
+  // marked restricted because they must never be contacted again, which makes
+  // hiding them a standing preference rather than something you are exploring
+  // with. Remembered across visits for the same reason.
+  const [hideRestricted, setHideRestricted] = useSticky("appuesta.hideRestricted", false);
   const [excluding, setExcluding] = useState(null);
   const [trend, setTrend] = useState([]);
   const [moves, setMoves] = useState([]);
@@ -250,7 +257,7 @@ export default function Segments({ s, lang }) {
       // A contact filter, not a financial one. Restricted players stay in every
       // total -- their money is real -- but when the list is being read to
       // decide who to call, they are noise at best and a mistake at worst.
-      if (filters.hideRestricted && p.restricted) return false;
+      if (hideRestricted && p.restricted) return false;
       if (minDeposits != null && Number(p.deposits || 0) < minDeposits) return false;
       if (minBets != null && Number(p.bets || 0) < minBets) return false;
       if (needle) {
@@ -259,7 +266,7 @@ export default function Segments({ s, lang }) {
       }
       return true;
     });
-  }, [players, filters]);
+  }, [players, filters, hideRestricted]);
 
   const { sorted, sort, toggle } = useSortedRows(filtered, SORT_COLUMNS);
 
@@ -314,7 +321,7 @@ export default function Segments({ s, lang }) {
   function exportSegment() {
     const parts = [filters.stage, filters.tier, filters.sport, filters.login,
       filters.engaged ? "engaged-not-depositing" : "",
-      filters.hideRestricted ? "sin-restringidos" : ""].filter(Boolean);
+      hideRestricted ? "sin-restringidos" : ""].filter(Boolean);
     const label = parts.length ? parts.join("-") : "todos";
     const slug = label.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-");
     downloadCsv(`appuesta-segmento-${slug}-${new Date().toISOString().slice(0, 10)}.csv`, CSV_COLUMNS, sorted);
@@ -525,9 +532,10 @@ export default function Segments({ s, lang }) {
         </label>
         <label title={s.seg.hideRestrictedHint}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: C.inkDim, cursor: "pointer" }}>
-          <input type="checkbox" checked={filters.hideRestricted}
-            onChange={e => setFilters(f => ({ ...f, hideRestricted: e.target.checked }))} />
+          <input type="checkbox" checked={hideRestricted}
+            onChange={e => setHideRestricted(e.target.checked)} />
           {s.seg.hideRestricted}
+          <span style={{ color: C.inkFaint }}>({players.filter(p => p.restricted).length})</span>
         </label>
         <input type="number" value={filters.minDeposits} placeholder={s.seg.minDeposits}
           onChange={e => setFilters(f => ({ ...f, minDeposits: e.target.value }))} style={{ ...input, width: 130 }} />
@@ -654,16 +662,22 @@ export default function Segments({ s, lang }) {
                     {p.days_since_deposit == null ? "—" : s.seg.daysAgo.replace("{n}", String(p.days_since_deposit))}
                   </td>
                   <td style={{ ...td, width: "1%" }}>
-                    {/* Removes the player from every figure on the dashboard,
-                        not just from this list, so it asks for a reason. */}
-                    <button
-                      onClick={() => excludePlayer(p)}
-                      disabled={excluding === p.id}
-                      title={s.seg.excludeHint}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 9px", borderRadius: 7, border: `1px solid ${C.panelBorder}`, background: "transparent", color: C.inkFaint, fontSize: 11.5, cursor: excluding === p.id ? "default" : "pointer", opacity: excluding === p.id ? 0.5 : 1 }}
-                    >
-                      <UserMinus size={12} /> {s.seg.exclude}
-                    </button>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      {/* Two different decisions, side by side on purpose.
+                          Restringir keeps the player's money in every total and
+                          takes them out of the contact lists; Excluir says they
+                          were never a customer and removes them from every
+                          figure, backwards. */}
+                      <RestrictButton player={p} s={s} onDone={load} />
+                      <button
+                        onClick={() => excludePlayer(p)}
+                        disabled={excluding === p.id}
+                        title={s.seg.excludeHint}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 9px", borderRadius: 7, border: `1px solid ${C.panelBorder}`, background: "transparent", color: C.inkFaint, fontSize: 11.5, cursor: excluding === p.id ? "default" : "pointer", opacity: excluding === p.id ? 0.5 : 1 }}
+                      >
+                        <UserMinus size={12} /> {s.seg.exclude}
+                      </button>
+                    </span>
                   </td>
                 </tr>
               ))}

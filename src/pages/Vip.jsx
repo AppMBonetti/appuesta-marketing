@@ -7,7 +7,9 @@ import { downloadCsv } from "../lib/csv";
 import { STAGE_COLORS } from "../lib/lifecycle";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "../components/SortHeader";
+import RestrictButton from "../components/RestrictButton";
 import VipTracker from "../components/VipTracker";
+import { useSticky } from "../lib/sticky";
 
 const TIER_COLORS = ["#8B93A3", "#B0555F", "#C9424F", "#E4022B", "#F03A57", "#F97A8F"];
 
@@ -116,7 +118,7 @@ const TIER_SORT_COLUMNS = [
   { key: "progress", label: s => s.tierDrill.cols.progress, value: p => p.progress_to_next },
 ];
 
-function TierPlayers({ players, tier, s, lang, thStyle, tdStyle }) {
+function TierPlayers({ players, tier, s, lang, thStyle, tdStyle, onChanged }) {
   const { sorted, sort, toggle } = useSortedRows(players, TIER_SORT_COLUMNS);
   return (
     <>
@@ -130,7 +132,7 @@ function TierPlayers({ players, tier, s, lang, thStyle, tdStyle }) {
     </div>
     <table style={{ width: "100%", borderCollapse: "collapse" }}>
       <thead>
-        <SortHeader columns={TIER_SORT_COLUMNS} sort={sort} toggle={toggle} s={s} th={thStyle} />
+        <SortHeader columns={TIER_SORT_COLUMNS} sort={sort} toggle={toggle} s={s} th={thStyle} trailing={1} />
       </thead>
       <tbody>
         {sorted.map(p => (
@@ -172,6 +174,10 @@ function TierPlayers({ players, tier, s, lang, thStyle, tdStyle }) {
             <td style={{ ...tdStyle, width: "1%" }}>
               <ProgressToNext player={p} color={tier.color} s={s} />
             </td>
+            {/* Same flag as the badge two columns back, set from here. */}
+            <td style={{ ...tdStyle, width: "1%" }}>
+              <RestrictButton player={p} s={s} onDone={onChanged} compact />
+            </td>
           </tr>
         ))}
       </tbody>
@@ -188,8 +194,13 @@ export default function Vip({ s, lang }) {
   const [openTier, setOpenTier] = useState(null);
   const [search, setSearch] = useState("");
   // Same contact filter as the tracker and Segments: narrows the lists, never
-  // the tier counts, because a restricted player's money still counts.
-  const [hideRestricted, setHideRestricted] = useState(false);
+  // the tier counts, because a restricted player's money still counts. One
+  // remembered key behind all three, so the choice holds across screens.
+  const [hideRestricted, setHideRestricted] = useSticky("appuesta.hideRestricted", false);
+  // Bumped when a player is restricted or released from either view. Both the
+  // tier table and the tracker read the flag, so both reload: the tracker's own
+  // fetch re-runs because `tiers` comes back as a new array.
+  const [tick, setTick] = useState(0);
   // Tracking first: opening this page, the question is almost always "how are my
   // VIPs doing", not "what does the ladder look like".
   const [view, setView] = useState("track");
@@ -219,7 +230,7 @@ export default function Vip({ s, lang }) {
     })();
 
     return () => { active = false; };
-  }, []);
+  }, [tick]);
 
   // Search narrows the lists and the exports, but never the tier counts above
   // them — those state the real size of each tier regardless of what is filtered.
@@ -266,7 +277,8 @@ export default function Vip({ s, lang }) {
       {error && <Panel style={{ color: C.negative }}>{error}</Panel>}
       {!loading && !error && !hasData && <EmptyState s={s} />}
       {!loading && !error && hasData && view === "track" && (
-        <VipTracker s={s} lang={lang} tiers={rows} progress={players} />
+        <VipTracker s={s} lang={lang} tiers={rows} progress={players}
+          onChanged={() => setTick(t => t + 1)} />
       )}
       {!loading && !error && hasData && view === "ladder" && (
           <>
@@ -349,7 +361,8 @@ export default function Vip({ s, lang }) {
                           <div style={{ padding: "20px 16px", fontSize: 12.5, color: C.inkDim }}>{s.tierDrill.noPlayers}</div>
                         ) : (
                           <TierPlayers players={tierPlayers} tier={t} s={s} lang={lang}
-                            thStyle={thStyle} tdStyle={tdStyle} />
+                            thStyle={thStyle} tdStyle={tdStyle}
+                            onChanged={() => setTick(n => n + 1)} />
                         )}
                       </div>
                     )}
