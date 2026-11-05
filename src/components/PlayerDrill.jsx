@@ -129,7 +129,20 @@ export default function PlayerDrill({ s, lang, metric, week, onClose }) {
                 <tbody>
                   {sorted.map(p => (
                     <tr key={p.id}>
-                      <td style={{ ...td, fontWeight: 500 }}>{p.name || p.id}</td>
+                      <td style={{ ...td, fontWeight: 500 }}>
+                        {p.name || p.id}
+                        {/* Marked here too, because this list gets worked
+                            through. The flag is set from Segments or the VIP
+                            screens; here it only has to be visible, since the
+                            week behind a registration count is history and not
+                            a decision to revisit. */}
+                        {p.restricted && (
+                          <span title={p.restriction_reason || s.seg.restrictedHint}
+                            style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
+                            {s.seg.restricted}
+                          </span>
+                        )}
+                      </td>
                       <td style={{ ...td, color: C.inkDim }}>{p.email || "—"}</td>
                       <td style={{ ...td, color: C.inkDim }}>{p.vip_tier || "—"}</td>
                       <td style={{ ...td, color: C.inkDim }}>{date(p.registered_at)}</td>

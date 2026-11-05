@@ -6,8 +6,10 @@ import { downloadCsv } from "../lib/csv";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "./SortHeader";
 import PlayerNotes, { pinnedNote, countLabel } from "./PlayerNotes";
+import RestrictButton from "./RestrictButton";
 import { Panel, Spinner, fmtDOP } from "./ui";
 import { STAGE_COLORS } from "../lib/lifecycle";
+import { useSticky } from "../lib/sticky";
 
 /**
  * The people at the top of the VIP ladder, and whether each one is still here.
@@ -163,7 +165,7 @@ const SORT_COLUMNS = [
   { key: "cushion", align: "right", label: s => s.vipTrack.cols.cushion, value: p => p.cushion },
 ];
 
-export default function VipTracker({ s, lang, tiers, progress }) {
+export default function VipTracker({ s, lang, tiers, progress, onChanged }) {
   const [rows, setRows] = useState(null);
   const [sports, setSports] = useState({});
   const [extra, setExtra] = useState({});
@@ -177,7 +179,9 @@ export default function VipTracker({ s, lang, tiers, progress }) {
   // Which stage the table is showing, "" for every stage, and whether banned or
   // self-excluded players are hidden from it.
   const [stageTab, setStageTab] = useState("");
-  const [hideRestricted, setHideRestricted] = useState(false);
+  // Shared with Segments and the ladder, and remembered: restricting somebody
+  // is a standing "never call this person", not a filter for one sitting.
+  const [hideRestricted, setHideRestricted] = useSticky("appuesta.hideRestricted", false);
 
   const names = useMemo(() => vipTierNames(tiers), [tiers]);
 
@@ -397,6 +401,7 @@ export default function VipTracker({ s, lang, tiers, progress }) {
                     <Row key={p.id} p={p} s={s} lang={lang} td={td} num={num}
                       isOpen={isOpen} colCount={colCount}
                       onNotesChanged={() => setNotesTick(t => t + 1)}
+                      onChanged={onChanged}
                       onToggle={() => setOpen(isOpen ? null : p.id)} />
                   );
                 })}
@@ -411,7 +416,7 @@ export default function VipTracker({ s, lang, tiers, progress }) {
   );
 }
 
-function Row({ p, s, lang, td, num, isOpen, onToggle, onNotesChanged, colCount }) {
+function Row({ p, s, lang, td, num, isOpen, onToggle, onNotesChanged, onChanged, colCount }) {
   const Chevron = isOpen ? ChevronDown : ChevronRight;
   const top = p.sports[0];
   const rest = p.sports.length - 1;
@@ -496,7 +501,12 @@ function Row({ p, s, lang, td, num, isOpen, onToggle, onNotesChanged, colCount }
           {p.cushion == null ? "—" : fmtDOP(p.cushion)}
           <div style={{ fontSize: 11, color: C.inkFaint }}>{s.vipTrack.floorShort} {fmtDOP(p.tierFloor)}</div>
         </td>
-        <td style={td} />
+        {/* The badge beside the name has been readable here since this page
+            existed; this is what sets it. A VIP is exactly who gets called, so
+            the flag has to be settable from the list the calls come off. */}
+        <td style={{ ...td, width: "1%" }}>
+          <RestrictButton player={p} s={s} onDone={onChanged} />
+        </td>
       </tr>
       {isOpen && (
         <tr style={{ background: "#1A1F28" }}>

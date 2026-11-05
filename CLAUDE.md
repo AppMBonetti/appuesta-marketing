@@ -12,26 +12,44 @@ live in Netlify's env vars (`VITE_SUPABASE_URL`,
 
 ## Where changes go
 
-Small, self-contained, visually obvious changes go straight to `main`: copy and
-translation strings, colors and spacing, chart options, icon swaps, adding a
-column to an existing table.
+**Everything goes to `main` without asking.** Finish the work, verify it, merge
+it, and then say what changed and what the figures did. Marcos is told after,
+with the numbers, not asked before. Do not open a pull request to request
+approval and do not end a turn with "when you approve it I'll send it" — if the
+work is verified it ships, and if it is not verified it is not finished.
 
-Anything that can silently produce wrong numbers or lock someone out goes to a
-branch with a preview URL first, for Marcos to approve:
-
-- `src/lib/importers/` — column mappings, parsing, upsert logic
-- auth, `team_members` gating, RLS assumptions (`src/lib/AuthContext.jsx`)
-- metric definitions and period math (`src/lib/period.js`)
-- anything calling `assign_vip_tiers()` or writing to Supabase
-- dependency upgrades
-
-When in doubt, preview first — a wrong number on a dashboard people trust is
-worse than a slow change.
+This replaces an earlier rule that sent anything risky to a preview URL for
+Marcos to approve. It was removed on purpose, at his request. What it was
+protecting against is real, so the protection moves from his approval to the
+checks below — the gate got stricter, not weaker.
 
 ## Verify before pushing
 
-`npm run build` and `npm run lint` both pass. The build has no test suite, so
-the build and lint are the gate.
+`npm run build` and `npm run lint` both pass. There is no test suite, so these
+are the floor, not the gate. Each kind of change has its own gate on top, and
+the result goes in the commit message or the reply:
+
+| Touching | What proves it |
+|---|---|
+| `src/lib/importers/` | Re-import the real workbook and tie the totals to it, row counts included. A green import screen is not evidence. |
+| RLS, policies, `is_team_member()` | `begin … set local role authenticated … rollback`. A deploy preview **cannot** test this: preview and production share one database. |
+| Metric definitions, `src/lib/period.js` | A case in `scripts/verify-period-compare.mjs` that fails without the change. Mutation-test it: break the fix, watch the case go red. |
+| A view on a page | Time it as `authenticated`, running **the query the page sends** — `select *` with its real `order by` and `limit`, not `count(*)`. |
+| What counts as a player | Before/after counts against `house_totals`, in the reply. A change that moves the book's size says so in numbers. |
+| A cache function (`refresh_*`) | An import from the dashboard. Calling it over MCP proves it computes the right rows and nothing about whether the app can run it. |
+| Dependency upgrades | Build, lint, and open the pages that use the package. |
+
+Two standing rules the autonomy does not touch:
+
+- **Never commit Supabase credentials.** Local builds take placeholder values on
+  the command line; `.env.local` is the only file they may go in.
+- **Say when something is unverified.** Shipping with a gap stated plainly is
+  fine. Shipping with the gap unmentioned is the one thing that cannot be
+  undone by another commit.
+
+Still Marcos's, because nobody else can do them: uploading the weekly reports,
+the Google-side GA4 steps, anything that spends money, and anything a player
+receives.
 
 ## Query performance — the `local_day()` trap
 
