@@ -354,21 +354,41 @@ how hard to chase a player who has gone quiet.
   and nothing looked wrong — the import reported success. After re-uploading the
   same file: 580 holders, DOP 1,157,145, matching the workbook exactly.
 
-## Claude Code settings are committed, because the container is not
+## `bypassPermissions` does nothing in a cloud session
 
-`.claude/settings.json` sets `permissions.defaultMode` to `bypassPermissions`, so
-a session acts without stopping to ask. It is **checked in on purpose**.
+This section used to say that `.claude/settings.json` setting
+`permissions.defaultMode` to `bypassPermissions` meant "a session acts without
+stopping to ask". **That is false here, and it was false the whole time.** A
+cloud session ignores `bypassPermissions` and `dontAsk` outright, and "Bypass
+permissions" is not even offered as a mode. The file was committed in #26 and
+the prompts kept coming; the reason was never that the file was missing.
 
-The same setting was first written to `.claude/settings.local.json`, which
-`.gitignore` excludes. That works on a laptop and not here: a cloud session runs
-in a fresh container that clones the repo from GitHub, so anything not committed
-does not exist when the session starts. The whole `.claude/` directory was simply
-gone at the next session, and the prompts came back.
+What actually decides it:
+
+- **The mode dropdown beside the prompt box**, chosen per task: *Accept edits*,
+  *Plan* or *Auto*. **Auto** is the one that runs most tool calls without
+  asking, and it is the ceiling in a cloud session. Nothing in the repository
+  can set it. No command-line flag changes it either — `--dangerously-skip-
+  permissions` and `--permission-mode` do not reach this session.
+- **`permissions.allow` in `.claude/settings.json`**, committed, does hold
+  across sessions. It is the only half of this file that earns its place, and
+  what belongs in it is the MCP servers the work runs on:
+  `mcp__Supabase`, `mcp__github`, `mcp__Netlify`.
+- Auto has a classifier of its own, and it refuses to let a session edit its
+  own permission file — `[Self-Modification]`. That is correct and not worth
+  working around: a change to `permissions.allow` is Marcos's to make, in
+  GitHub's web editor if that is quicker than a local checkout.
+
+Still true, and the reason the file is committed at all:
 
 - It only takes effect for a session whose **checkout already contains it**.
   Settings are read at startup, so adding or changing the file mid-session does
   nothing until the next one — and it has to be on the branch that session starts
   from, which is usually `main`.
+- A cloud session clones the repo fresh, so anything uncommitted does not exist
+  when it starts. `.claude/settings.local.json` is gitignored, which is why
+  writing the setting there did nothing: the whole `.claude/` directory was gone
+  at the next session.
 - It applies to **anyone** who opens this repo in Claude Code, not just Marcos.
 - `.claude/settings.local.json` stays gitignored, for per-person overrides. It
   loads after this file and wins, so that is where to put a narrower mode for
