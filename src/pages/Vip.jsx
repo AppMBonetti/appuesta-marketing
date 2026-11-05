@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, ChevronDown, Download } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
@@ -10,6 +10,14 @@ import { SortHeader } from "../components/SortHeader";
 import RestrictButton from "../components/RestrictButton";
 import VipTracker from "../components/VipTracker";
 import { useSticky } from "../lib/sticky";
+
+// What a tier shows for a window it has no rows in. The views cross join every
+// tier against every window, so this is a belt-and-braces default rather than
+// something expected to be reached.
+const EMPTY_TIER_FIGURES = {
+  players: 0, total_deposits: 0, deposit_count: 0, avg_deposit_ticket: null,
+  tickets: 0, ticket_value: 0, bonus_stake: 0, avg_ticket: null, net_cash: 0, bettors: 0,
+};
 
 const TIER_COLORS = ["#8B93A3", "#B0555F", "#C9424F", "#E4022B", "#F03A57", "#F97A8F"];
 
@@ -60,6 +68,19 @@ function exportPlayers(rows, label) {
   const stamp = new Date().toISOString().slice(0, 10);
   const slug = label.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-");
   downloadCsv(`appuesta-${slug}-${stamp}.csv`, CSV_COLUMNS, rows);
+}
+
+function fmtMonth(value, lang) {
+  return new Date(`${String(value).slice(0, 10)}T12:00:00Z`).toLocaleDateString(
+    lang === "es" ? "es-DO" : "en-GB",
+    { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+function fmtShortDay(value, lang) {
+  if (!value) return "";
+  return new Date(`${String(value).slice(0, 10)}T12:00:00Z`).toLocaleDateString(
+    lang === "es" ? "es-DO" : "en-GB",
+    { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
 function fmtDate(value, s, lang) {
@@ -204,6 +225,14 @@ export default function Vip({ s, lang }) {
   // Tracking first: opening this page, the question is almost always "how are my
   // VIPs doing", not "what does the ladder look like".
   const [view, setView] = useState("track");
+  // Which window the ladder's figures cover. "all" is the lifetime aggregate it
+  // has always shown; "m:<month>" and "p:<start>|<end>" are a month and a
+  // single deposit period. Not a free date range on purpose: the payments
+  // report is one aggregate per player per period with no dates inside it, so
+  // a whole period is the smallest window deposits can be attributed to.
+  const [scope, setScope] = useState("all");
+  const [monthRows, setMonthRows] = useState([]);
+  const [periodRows, setPeriodRows] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -212,16 +241,24 @@ export default function Vip({ s, lang }) {
 
     (async () => {
       try {
-        const [tiersRes, playersRes] = await Promise.all([
+        const [tiersRes, playersRes, monthsRes, periodsRes] = await Promise.all([
           supabase.from("vip_tier_summary").select("*").order("tier_order"),
           supabase.from("player_tier_progress").select("*").order("trailing_wager", { ascending: false }),
+          supabase.from("vip_tier_month_summary").select("*")
+            .order("month_start", { ascending: false }).order("tier_order"),
+          supabase.from("vip_tier_period_summary").select("*")
+            .order("period_start", { ascending: false }).order("tier_order"),
         ]);
         if (tiersRes.error) throw tiersRes.error;
         if (playersRes.error) throw playersRes.error;
+        if (monthsRes.error) throw monthsRes.error;
+        if (periodsRes.error) throw periodsRes.error;
 
         if (!active) return;
         setRows((tiersRes.data || []).map((t, i) => ({ ...t, color: TIER_COLORS[i % TIER_COLORS.length] })));
         setPlayers(playersRes.data || []);
+        setMonthRows(monthsRes.data || []);
+        setPeriodRows(periodsRes.data || []);
       } catch (e) {
         if (active) setError(e.message);
       } finally {
@@ -240,7 +277,61 @@ export default function Vip({ s, lang }) {
   );
   const restrictedCount = players.filter(p => p.restricted).length;
 
-  const maxPop = Math.max(1, ...rows.map(r => Number(r.players)));
+  // The windows the data can actually answer, newest first. Deduplicated on the
+  // key rather than on the tier rows, which arrive six-deep per window.
+  const months = useMemo(
+    () => [...new Map(monthRows.map(r => [r.month_start, r])).values()],
+    [monthRows]
+  );
+  const periods = useMemo(
+    () => [...new Map(periodRows.map(r => [`${r.period_start}|${r.period_end}`, r])).values()],
+    [periodRows]
+  );
+
+  // The selected window's figures, renamed onto the columns the lifetime row
+  // uses so one renderer serves both. `players` becomes depositors: a tier has
+  // the same population whatever window is asked about, and what changes is how
+  // many of them paid in it.
+  const scoped = useMemo(() => {
+    if (scope === "all") return null;
+    const key = scope.slice(2);
+    const src = scope.startsWith("m:")
+      ? monthRows.filter(r => r.month_start === key)
+      : periodRows.filter(r => `${r.period_start}|${r.period_end}` === key);
+    if (!src.length) return null;
+    return {
+      meta: src[0],
+      byTier: Object.fromEntries(src.map(r => [r.tier_name, {
+        players: r.depositors,
+        total_deposits: r.deposits,
+        deposit_count: r.deposit_count,
+        avg_deposit_ticket: r.avg_deposit_ticket,
+        tickets: r.tickets,
+        ticket_value: r.ticket_value,
+        bonus_stake: r.bonus_stake,
+        avg_ticket: r.avg_ticket,
+        net_cash: r.net_cash,
+        bettors: r.bettors,
+      }])),
+    };
+  }, [scope, monthRows, periodRows]);
+
+  // Tier metadata (floor, cashback, colour) always comes from the ladder
+  // itself; only the figures are overlaid.
+  const ladder = scoped
+    ? rows.map(t => ({ ...t, ...(scoped.byTier[t.tier_name] || EMPTY_TIER_FIGURES) }))
+    : rows;
+
+  // In lifetime mode the bar is share of players, which is what it has always
+  // been. In a window that reads wrong -- a tier's population does not change
+  // by month -- so it becomes share of what was deposited, and the caption
+  // underneath says which one it is.
+  const barOf = t => Number(scoped ? t.total_deposits : t.players) || 0;
+  const maxBar = Math.max(1, ...ladder.map(barOf));
+  const barTotal = ladder.reduce((sum, t) => sum + barOf(t), 0);
+
+  // hasData stays on the lifetime rows: an empty month must not make the page
+  // look like there is no data at all.
   const totalPlayers = rows.reduce((sum, r) => sum + Number(r.players), 0);
   const hasData = totalPlayers > 0;
   const thStyle = { padding: "9px 14px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 11.5, whiteSpace: "nowrap" };
@@ -284,6 +375,34 @@ export default function Vip({ s, lang }) {
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
               <p style={{ color: C.inkFaint, fontSize: 12, margin: 0 }}>{s.tierDrill.hint}</p>
+              {/* Periods, not a free date range: deposits arrive as one
+                  aggregate per player per period with no dates inside, so a
+                  whole period is the smallest window they can be attributed
+                  to. Bets in the same window are exact. */}
+              <select value={scope} onChange={e => { setScope(e.target.value); setOpenTier(null); }}
+                title={s.tierPeriod.hint}
+                style={{ padding: "7px 11px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: C.panel, color: C.ink, fontSize: 12.5, fontWeight: 500 }}>
+                <option value="all">{s.tierPeriod.allTime}</option>
+                {months.length > 0 && (
+                  <optgroup label={s.tierPeriod.byMonth}>
+                    {months.map(m => (
+                      <option key={m.month_start} value={`m:${m.month_start}`}>
+                        {fmtMonth(m.month_start, lang)}
+                        {m.complete ? "" : ` · ${s.tierPeriod.partial.replace("{d}", fmtShortDay(m.covered_to, lang))}`}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {periods.length > 0 && (
+                  <optgroup label={s.tierPeriod.byPeriod}>
+                    {periods.map(r => (
+                      <option key={`${r.period_start}|${r.period_end}`} value={`p:${r.period_start}|${r.period_end}`}>
+                        {fmtShortDay(r.period_start, lang)} – {fmtShortDay(r.period_end, lang)}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
               <input
                 type="search"
                 value={search}
@@ -307,9 +426,10 @@ export default function Vip({ s, lang }) {
               </button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {rows.map(t => {
+              {ladder.map(t => {
                 const count = Number(t.players);
-                const share = totalPlayers > 0 ? (count / totalPlayers) * 100 : 0;
+                const bar = barOf(t);
+                const share = barTotal > 0 ? (bar / barTotal) * 100 : 0;
                 const open = openTier === t.tier_name;
                 const tierPlayers = visiblePlayers.filter(p => p.vip_tier === t.tier_name);
                 const Chevron = open ? ChevronDown : ChevronRight;
@@ -334,15 +454,22 @@ export default function Vip({ s, lang }) {
                       </div>
                       <div style={{ flex: 1, minWidth: 60, display: "flex", flexDirection: "column", gap: 5 }}>
                         <div style={{ background: "#1D222B", borderRadius: 8, height: 14 }}>
-                          <div style={{ width: `${(count / maxPop) * 100}%`, height: "100%", borderRadius: 8, background: t.color, opacity: 0.85 }} />
+                          <div style={{ width: `${(bar / maxBar) * 100}%`, height: "100%", borderRadius: 8, background: t.color, opacity: 0.85 }} />
                         </div>
                         <div style={{ color: C.inkFaint, fontSize: 11 }}>
-                          {share.toFixed(0)}% {s.tierLadder.ofPlayers}
+                          {share.toFixed(0)}% {scoped ? s.tierPeriod.ofDeposits : s.tierLadder.ofPlayers}
                         </div>
                       </div>
                       {/* What each segment is actually worth: what comes in, and
                           what gets played. */}
-                      <Metric label={s.vipCols.players} value={count.toLocaleString()} />
+                      {/* Lifetime: how many players are in the tier. A window:
+                          how many of them deposited in it. Two different
+                          questions, so the label changes with the mode. */}
+                      <Metric label={scoped ? s.tierPeriod.depositors : s.vipCols.players}
+                        value={count.toLocaleString()}
+                        sub={scoped && Number(t.bettors) > 0
+                          ? s.tierPeriod.bettorsSub.replace("{n}", Number(t.bettors).toLocaleString())
+                          : null} />
                       <Metric label={s.tierMetrics.deposited} value={fmtDOP(t.total_deposits)} />
                       <Metric label={s.tierMetrics.depositCount} value={Number(t.deposit_count).toLocaleString()} />
                       <Metric label={s.tierMetrics.avgDeposit}
@@ -353,6 +480,16 @@ export default function Vip({ s, lang }) {
                         sub={Number(t.ticket_value) > 0
                           ? s.tierLadder.bonusShare.replace("{p}", String(Math.round((Number(t.bonus_stake) / Number(t.ticket_value)) * 100)))
                           : null} />
+                      {/* Only in a window, and only because it can be negative:
+                          Leyenda took out DOP 150,763 more than it put in during
+                          October, which the deposit column alone cannot show.
+                          Lifetime has no payout figure to pair with it -- the
+                          payments report only carries payouts per period. */}
+                      {scoped && (
+                        <Metric label={s.tierPeriod.netCash}
+                          value={fmtDOP(t.net_cash)}
+                          sub={Number(t.net_cash) < 0 ? s.tierPeriod.negative : null} />
+                      )}
                     </button>
 
                     {open && (
@@ -370,6 +507,26 @@ export default function Vip({ s, lang }) {
                 );
               })}
             </div>
+            {/* Three things a window cannot be read correctly without. They
+                only appear in a window, because none of them is true of the
+                lifetime view. */}
+            {scoped && (
+              <div style={{ border: `1px solid ${C.panelBorder}`, borderRadius: 12, background: C.panel, padding: "12px 15px", margin: "14px 0 0", maxWidth: 760, display: "flex", flexDirection: "column", gap: 7 }}>
+                {scoped.meta.month_start && !scoped.meta.complete && (
+                  <div style={{ fontSize: 11.5, color: "#D9A848" }}>
+                    {s.tierPeriod.monthPartial
+                      .replace("{from}", fmtShortDay(scoped.meta.covered_from, lang))
+                      .replace("{to}", fmtShortDay(scoped.meta.covered_to, lang))}
+                  </div>
+                )}
+                {scoped.meta.straddles_month && (
+                  <div style={{ fontSize: 11.5, color: "#D9A848" }}>{s.tierPeriod.straddles}</div>
+                )}
+                <div style={{ fontSize: 11.5, color: C.inkDim }}>{s.tierPeriod.tierIsToday}</div>
+                <div style={{ fontSize: 11.5, color: C.inkDim }}>{s.tierPeriod.drillIsWholeTier}</div>
+                <div style={{ fontSize: 11.5, color: C.inkFaint }}>{s.tierPeriod.sourceNote}</div>
+              </div>
+            )}
             <p style={{ color: C.inkFaint, fontSize: 11.5, margin: "14px 0 0", maxWidth: 620 }}>
               {lang === "es"
                 ? "El nivel se recalcula en cada importación a partir de la apuesta acumulada de los últimos 90 días. Sin apuestas registradas en ese periodo, un jugador queda en Prospecto — el nivel base, que no exige apuesta mínima."
