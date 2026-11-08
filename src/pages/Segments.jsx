@@ -151,6 +151,8 @@ export default function Segments({ s, lang }) {
   // drop the oldest weeks. One week at a time is both smaller and the question
   // actually being asked.
   const [moveWeek, setMoveWeek] = useState(null);
+  // "players" is the list this screen is opened for; "moves" is the history.
+  const [tab, setTab] = useState("players");
   // Which earlier import the stage counts are read against. Changes the number
   // on each card and nothing else -- the player list below is always the book
   // as it stands now, so comparing a period never re-buckets anybody.
@@ -389,6 +391,25 @@ export default function Segments({ s, lang }) {
           </span>
         )}
       </div>
+      {/* Two jobs, two tabs. They were stacked on one page and the movement
+          list grew from a two-line box to 299 rows, which pushed the player
+          table -- the reason this screen exists -- below a screen and a half
+          of scrolling. Players is the default, exactly as before. */}
+      <div style={{ display: "flex", gap: 4, background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 11, padding: 4, marginBottom: 14, width: "fit-content" }}>
+        {[["players", s.seg.tabs.players], ["moves", s.seg.tabs.moves]].map(([v, label]) => (
+          <button key={v} onClick={() => setTab(v)}
+            style={{
+              padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer",
+              fontSize: 13, fontWeight: tab === v ? 600 : 500,
+              background: tab === v ? C.accent : "transparent",
+              color: tab === v ? "#fff" : C.inkDim,
+            }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "players" && (<>
 
       {/* Changes only the figure on each card. The list below is always the
           book as it stands, so switching this never re-sorts anybody into a
@@ -464,180 +485,12 @@ export default function Segments({ s, lang }) {
         })}
       </div>
 
-      {/* The cards give one delta. This gives the shape: whether Active is
-          still climbing or has flattened, and whether At risk is filling up
-          behind it. Nine weekly cuts, the last one captured at import time and
-          the rest reconstructed. */}
-      {captures.length > 1 && (
-        <Panel style={{ padding: 4, marginBottom: 14, overflowX: "auto" }}>
-          <div style={{ padding: "10px 12px 4px", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-            <strong style={{ fontSize: 13 }}>{s.seg.history.title}</strong>
-            <span style={{ fontSize: 11.5, color: C.inkFaint }}>{s.seg.history.sub}</span>
-          </div>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ ...th, position: "sticky", left: 0, background: C.panel }}>{s.seg.cols.lifecycle}</th>
-                {captures.map(c => (
-                  <th key={c} style={{ ...th, textAlign: "right" }}>
-                    {fmtDay(c, lang).replace(/ \d{4}$/, "")}
-                    {estimatedOn[c] && (
-                      <span title={s.seg.history.estimatedHint} style={{ color: "#D9A848", marginLeft: 3 }}>*</span>
-                    )}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {STAGES.map(stage => {
-                const goodToGrow = stage === "New" || stage === "Active";
-                return (
-                  <tr key={stage} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
-                    <td style={{ ...td, position: "sticky", left: 0, background: C.panel }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_COLORS[stage], display: "inline-block", marginRight: 7 }} />
-                      {s.seg.lifecycle[stage]}
-                    </td>
-                    {captures.map((c, i) => {
-                      const n = byCapture[c]?.[stage] ?? 0;
-                      const before = i === 0 ? null : (byCapture[captures[i - 1]]?.[stage] ?? 0);
-                      const delta = before == null ? null : n - before;
-                      return (
-                        <td key={c} style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                          {n.toLocaleString()}
-                          {delta != null && delta !== 0 && (
-                            <span style={{ marginLeft: 6, fontSize: 11, color: (delta > 0) === goodToGrow ? C.positive : C.negative }}>
-                              {delta > 0 ? "+" : ""}{delta}
-                            </span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <p style={{ fontSize: 11, color: C.inkFaint, margin: "9px 12px 10px", maxWidth: 820 }}>
-            {s.seg.history.note}
-          </p>
-        </Panel>
-      )}
-
       {filters.stage && (
         <Panel style={{ padding: "11px 14px", marginBottom: 14, fontSize: 12.5, color: C.inkDim, borderColor: `${STAGE_COLORS[filters.stage]}66` }}>
           <strong style={{ color: C.ink }}>{s.seg.lifecycle[filters.stage]}</strong> — {s.seg.desc[filters.stage]}
         </Panel>
       )}
 
-      {/* Who crossed a line since the previous import, and which way. The
-          counts above say the funnel changed shape; this says who did it, which
-          is what makes the cause findable. */}
-      <div style={{ marginBottom: 20 }}>
-        <SectionHeading title={s.seg.moves.title} subtitle={s.seg.moves.sub} />
-        {latestMoves.length === 0 ? (
-          <Panel style={{ padding: "13px 16px", fontSize: 12.5, color: C.inkDim, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-            <span>{captures.length < 2 ? s.seg.moves.needsTwo : s.seg.moves.none}</span>
-            {moveWeeks.length > 1 && (
-              <select value={moveWeek || ""} onChange={e => { setMoveWeek(e.target.value); setMoveFilter(""); }}
-                style={{ ...input, padding: "5px 9px", fontSize: 12 }}>
-                {moveWeeks.map(c => (
-                  <option key={c} value={c}>
-                    {s.seg.history.weekTo.replace("{d}", fmtDay(c, lang))}{estimatedOn[c] ? " *" : ""}
-                  </option>
-                ))}
-              </select>
-            )}
-          </Panel>
-        ) : (
-          <>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-              {["up", "down"].map(dir => {
-                const n = latestMoves.filter(m => m.direction === dir).length;
-                const on = moveFilter === dir;
-                return (
-                  <button key={dir} onClick={() => setMoveFilter(on ? "" : dir)}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 13px", borderRadius: 9, cursor: "pointer", background: C.panel, border: `1px solid ${on ? STAGE_MOVE_COLORS[dir] : C.panelBorder}`, color: C.ink, fontSize: 12.5 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_MOVE_COLORS[dir] }} />
-                    {s.seg.moves[dir]}
-                    <strong style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{n}</strong>
-                  </button>
-                );
-              })}
-              <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-                {uncertainOn[moveWeek] > 0 && (
-                  <span title={s.seg.history.estimatedHint} style={{ fontSize: 11.5, color: "#D9A848" }}>
-                    {s.seg.history.uncertain.replace("{n}", String(uncertainOn[moveWeek]))}
-                  </span>
-                )}
-                <span style={{ fontSize: 11.5, color: C.inkFaint }}>
-                  {s.seg.moves.between
-                    .replace("{from}", fmtDay(latestMoves[0].prev_captured_on, lang))
-                    .replace("{to}", fmtDay(latestMoves[0].captured_on, lang))}
-                </span>
-                {/* Every week, not only the newest: the question is what the
-                    funnel did week by week, which one capture cannot answer. */}
-                {moveWeeks.length > 1 && (
-                  <select value={moveWeek || ""} onChange={e => { setMoveWeek(e.target.value); setMoveFilter(""); }}
-                    style={{ ...input, padding: "5px 9px", fontSize: 12 }}>
-                    {moveWeeks.map(c => (
-                      <option key={c} value={c}>
-                        {s.seg.history.weekTo.replace("{d}", fmtDay(c, lang))}
-                        {estimatedOn[c] ? " *" : ""}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </span>
-            </div>
-            <Panel style={{ padding: 4, overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    {[s.seg.cols.player, s.seg.moves.from, s.seg.moves.to, s.seg.cols.tier,
-                      s.seg.moves.depositsAdded, s.seg.cols.balance, s.seg.cols.lastDeposit]
-                      .map(h => <th key={h} style={th}>{h}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {shownMoves.map(m => (
-                    <tr key={`${m.player_id}|${m.captured_on}`} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
-                      <td style={{ ...td, fontWeight: 500 }}>
-                        {m.name || m.username || m.player_id}
-                        {m.restricted && (
-                          <span title={m.restriction_reason || s.seg.restrictedHint}
-                            style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
-                            {s.seg.restricted}
-                          </span>
-                        )}
-                        <div style={{ fontSize: 11, color: C.inkFaint }}>{m.email || ""}</div>
-                      </td>
-                      <td style={{ ...td, color: C.inkDim }}>
-                        <span style={{ width: 7, height: 7, borderRadius: 99, background: STAGE_COLORS[m.prev_lifecycle], display: "inline-block", marginRight: 6 }} />
-                        {s.seg.lifecycle[m.prev_lifecycle] || m.prev_lifecycle}
-                      </td>
-                      <td style={{ ...td, color: STAGE_MOVE_COLORS[m.direction], fontWeight: 500 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: 99, background: STAGE_COLORS[m.lifecycle], display: "inline-block", marginRight: 6 }} />
-                        {s.seg.lifecycle[m.lifecycle] || m.lifecycle}
-                      </td>
-                      <td style={{ ...td, color: C.inkDim }}>{m.vip_tier || "—"}</td>
-                      <td style={td}>
-                        {Number(m.deposits_added) > 0 ? fmtDOP(m.deposits_added) : "—"}
-                      </td>
-                      <td style={{ ...td, color: Number(m.total_balance) > 0 ? C.positive : C.inkDim }}>
-                        {m.total_balance == null ? "—" : fmtDOP(m.total_balance)}
-                      </td>
-                      <td style={{ ...td, color: C.inkDim }}>{dateOf(m.last_deposit_date)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Panel>
-            <p style={{ color: C.inkFaint, fontSize: 11.5, margin: "10px 0 0", maxWidth: 700 }}>
-              {s.seg.moves.note}
-            </p>
-          </>
-        )}
-      </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
         <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
@@ -929,6 +782,179 @@ export default function Segments({ s, lang }) {
           </div>
         );
       })()}
+      </>)}
+
+      {tab === "moves" && (<>
+      {/* The cards give one delta. This gives the shape: whether Active is
+          still climbing or has flattened, and whether At risk is filling up
+          behind it. Nine weekly cuts, the last one captured at import time and
+          the rest reconstructed. */}
+      {captures.length > 1 && (
+        <Panel style={{ padding: 4, marginBottom: 14, overflowX: "auto" }}>
+          <div style={{ padding: "10px 12px 4px", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+            <strong style={{ fontSize: 13 }}>{s.seg.history.title}</strong>
+            <span style={{ fontSize: 11.5, color: C.inkFaint }}>{s.seg.history.sub}</span>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, position: "sticky", left: 0, background: C.panel }}>{s.seg.cols.lifecycle}</th>
+                {captures.map(c => (
+                  <th key={c} style={{ ...th, textAlign: "right" }}>
+                    {fmtDay(c, lang).replace(/ \d{4}$/, "")}
+                    {estimatedOn[c] && (
+                      <span title={s.seg.history.estimatedHint} style={{ color: "#D9A848", marginLeft: 3 }}>*</span>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {STAGES.map(stage => {
+                const goodToGrow = stage === "New" || stage === "Active";
+                return (
+                  <tr key={stage} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
+                    <td style={{ ...td, position: "sticky", left: 0, background: C.panel }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_COLORS[stage], display: "inline-block", marginRight: 7 }} />
+                      {s.seg.lifecycle[stage]}
+                    </td>
+                    {captures.map((c, i) => {
+                      const n = byCapture[c]?.[stage] ?? 0;
+                      const before = i === 0 ? null : (byCapture[captures[i - 1]]?.[stage] ?? 0);
+                      const delta = before == null ? null : n - before;
+                      return (
+                        <td key={c} style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                          {n.toLocaleString()}
+                          {delta != null && delta !== 0 && (
+                            <span style={{ marginLeft: 6, fontSize: 11, color: (delta > 0) === goodToGrow ? C.positive : C.negative }}>
+                              {delta > 0 ? "+" : ""}{delta}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p style={{ fontSize: 11, color: C.inkFaint, margin: "9px 12px 10px", maxWidth: 820 }}>
+            {s.seg.history.note}
+          </p>
+        </Panel>
+      )}
+
+      {/* Who crossed a line since the previous import, and which way. The
+          counts above say the funnel changed shape; this says who did it, which
+          is what makes the cause findable. */}
+      <div style={{ marginBottom: 20 }}>
+        <SectionHeading title={s.seg.moves.title} subtitle={s.seg.moves.sub} />
+        {latestMoves.length === 0 ? (
+          <Panel style={{ padding: "13px 16px", fontSize: 12.5, color: C.inkDim, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <span>{captures.length < 2 ? s.seg.moves.needsTwo : s.seg.moves.none}</span>
+            {moveWeeks.length > 1 && (
+              <select value={moveWeek || ""} onChange={e => { setMoveWeek(e.target.value); setMoveFilter(""); }}
+                style={{ ...input, padding: "5px 9px", fontSize: 12 }}>
+                {moveWeeks.map(c => (
+                  <option key={c} value={c}>
+                    {s.seg.history.weekTo.replace("{d}", fmtDay(c, lang))}{estimatedOn[c] ? " *" : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Panel>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+              {["up", "down"].map(dir => {
+                const n = latestMoves.filter(m => m.direction === dir).length;
+                const on = moveFilter === dir;
+                return (
+                  <button key={dir} onClick={() => setMoveFilter(on ? "" : dir)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 13px", borderRadius: 9, cursor: "pointer", background: C.panel, border: `1px solid ${on ? STAGE_MOVE_COLORS[dir] : C.panelBorder}`, color: C.ink, fontSize: 12.5 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_MOVE_COLORS[dir] }} />
+                    {s.seg.moves[dir]}
+                    <strong style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{n}</strong>
+                  </button>
+                );
+              })}
+              <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                {uncertainOn[moveWeek] > 0 && (
+                  <span title={s.seg.history.estimatedHint} style={{ fontSize: 11.5, color: "#D9A848" }}>
+                    {s.seg.history.uncertain.replace("{n}", String(uncertainOn[moveWeek]))}
+                  </span>
+                )}
+                <span style={{ fontSize: 11.5, color: C.inkFaint }}>
+                  {s.seg.moves.between
+                    .replace("{from}", fmtDay(latestMoves[0].prev_captured_on, lang))
+                    .replace("{to}", fmtDay(latestMoves[0].captured_on, lang))}
+                </span>
+                {/* Every week, not only the newest: the question is what the
+                    funnel did week by week, which one capture cannot answer. */}
+                {moveWeeks.length > 1 && (
+                  <select value={moveWeek || ""} onChange={e => { setMoveWeek(e.target.value); setMoveFilter(""); }}
+                    style={{ ...input, padding: "5px 9px", fontSize: 12 }}>
+                    {moveWeeks.map(c => (
+                      <option key={c} value={c}>
+                        {s.seg.history.weekTo.replace("{d}", fmtDay(c, lang))}
+                        {estimatedOn[c] ? " *" : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </span>
+            </div>
+            <Panel style={{ padding: 4, overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {[s.seg.cols.player, s.seg.moves.from, s.seg.moves.to, s.seg.cols.tier,
+                      s.seg.moves.depositsAdded, s.seg.cols.balance, s.seg.cols.lastDeposit]
+                      .map(h => <th key={h} style={th}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {shownMoves.map(m => (
+                    <tr key={`${m.player_id}|${m.captured_on}`} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
+                      <td style={{ ...td, fontWeight: 500 }}>
+                        {m.name || m.username || m.player_id}
+                        {m.restricted && (
+                          <span title={m.restriction_reason || s.seg.restrictedHint}
+                            style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
+                            {s.seg.restricted}
+                          </span>
+                        )}
+                        <div style={{ fontSize: 11, color: C.inkFaint }}>{m.email || ""}</div>
+                      </td>
+                      <td style={{ ...td, color: C.inkDim }}>
+                        <span style={{ width: 7, height: 7, borderRadius: 99, background: STAGE_COLORS[m.prev_lifecycle], display: "inline-block", marginRight: 6 }} />
+                        {s.seg.lifecycle[m.prev_lifecycle] || m.prev_lifecycle}
+                      </td>
+                      <td style={{ ...td, color: STAGE_MOVE_COLORS[m.direction], fontWeight: 500 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: 99, background: STAGE_COLORS[m.lifecycle], display: "inline-block", marginRight: 6 }} />
+                        {s.seg.lifecycle[m.lifecycle] || m.lifecycle}
+                      </td>
+                      <td style={{ ...td, color: C.inkDim }}>{m.vip_tier || "—"}</td>
+                      <td style={td}>
+                        {Number(m.deposits_added) > 0 ? fmtDOP(m.deposits_added) : "—"}
+                      </td>
+                      <td style={{ ...td, color: Number(m.total_balance) > 0 ? C.positive : C.inkDim }}>
+                        {m.total_balance == null ? "—" : fmtDOP(m.total_balance)}
+                      </td>
+                      <td style={{ ...td, color: C.inkDim }}>{dateOf(m.last_deposit_date)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+            <p style={{ color: C.inkFaint, fontSize: 11.5, margin: "10px 0 0", maxWidth: 700 }}>
+              {s.seg.moves.note}
+            </p>
+          </>
+        )}
+      </div>
+      </>)}
+
     </>
   );
 }
