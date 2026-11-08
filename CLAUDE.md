@@ -501,12 +501,46 @@ Those 53 are the only rows that move; checked before switching.
 player against **their own** previous capture, so someone who first appears in
 the second import has no phantom move.
 
-**It is not backfilled, and cannot be.** The stage is a threshold on days since
-the last deposit, and the player report only ever carries the *latest* deposit
-date, so a player's stage on 11 October is not recoverable from what we hold
-today. `deposit_periods` knows which week a player deposited in but not which
-day, and the thresholds are 8/15/30 days — dating a deposit to its period end
-would move players across stage lines on invented precision.
+**It was backfilled, and this note used to say it could not be.** The claim
+was: the player report carries only the *latest* deposit date, `deposit_periods`
+knows the week but not the day, and the thresholds are 8/15/30 days, so dating a
+deposit to its period end would move players across stage lines on invented
+precision.
+
+The premises are right and the conclusion does not follow, for a reason that is
+arithmetic rather than judgement: **the thresholds are 8, 15 and 30 and a period
+is 7 days long**, so a week-wide window usually sits entirely inside one stage.
+Deposited in the week ending at the cut → 0–6 days, always under 8. Three weeks
+before → 21–27, always At risk. Five weeks or more → always Churned. Only the
+2nd, 3rd and 5th weeks back straddle a line at all.
+
+Most players never need the window. Two exact dates are already in the player
+report: `last_deposit_date` when it is itself at or before the cut, and
+`first_deposit_date` for anyone who had exactly one deposit at that point,
+because with one deposit the last one *is* the first one. What is left is 8–28
+players a week — 1.1%–12.7% of that week's depositors, under 1% of the book.
+They carry `stage_uncertain` and the other reading in `alt_lifecycle`, and the
+screens show the count rather than hiding it.
+
+- `reconstruct_player_stages()` writes `source = 'reconstructed'` and only ever
+  deletes its own rows, so a genuine capture cannot be lost to it;
+  `snapshot_player_stages()` stamps `source = 'import'` on both the insert and
+  the conflict update, so a real import upgrades an estimated week in place.
+- Checked against the one real capture: of 4,063 players the reconstruction gets
+  the stage right for **4,060**. Bets match exactly. The 3 misses are the seam
+  between the two reports, not the method — for two players the payments report
+  holds no deposit the player report has, and for one the reverse.
+- Only Sundays are reconstructed. The month-split period ends (30 Sep, 31 Oct)
+  are real periods but not week ends, and including them would put a one-day
+  step in the middle of a weekly cadence.
+- `vip_tier` is left **null** on reconstructed rows. The tier comes from
+  trailing 90-day wagering and nothing stores what it was, so filling it with
+  today's tier would show a tier change that never happened. It is
+  reconstructible the same way — bets carry real dates — and nobody has asked.
+- **`lifecycle_trend` had to start joining `real_players`.** It counted every
+  row in a capture, and the 1 November capture holds 669 accounts the
+  disposable-domain rule excluded afterwards, so the first comparison would have
+  invented a drop of 669 Registered.
 
 - Written by `snapshot_player_stages()` at the end of the **player report**
   import, because that is the only import that moves a stage.

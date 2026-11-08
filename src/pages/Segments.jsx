@@ -146,6 +146,11 @@ export default function Segments({ s, lang }) {
   const [excluding, setExcluding] = useState(null);
   const [trend, setTrend] = useState([]);
   const [moves, setMoves] = useState([]);
+  // Which capture's movers are listed. All of them together are 1,147 rows and
+  // PostgREST caps a response at 1,000, so fetching "every move" would silently
+  // drop the oldest weeks. One week at a time is both smaller and the question
+  // actually being asked.
+  const [moveWeek, setMoveWeek] = useState(null);
   // Which earlier import the stage counts are read against. Changes the number
   // on each card and nothing else -- the player list below is always the book
   // as it stands now, so comparing a period never re-buckets anybody.
@@ -210,18 +215,15 @@ export default function Segments({ s, lang }) {
   }
 
   async function load() {
-    const [p, sum, watch, trend, moves] = await Promise.all([
+    const [p, sum, watch, trend] = await Promise.all([
       loadAllPlayers(),
       supabase.from("lifecycle_summary").select("*"),
       loadWatchlist(),
-      // Stage counts per import. Captured at import time and never
-      // reconstructible, so this is empty before the first capture and has
-      // nothing to compare against until the second.
+      // One row per stage per weekly cut. The cuts before 1 November are
+      // reconstructed rather than captured -- `estimated` says which, and
+      // `uncertain` counts the players whose stage that week the data cannot
+      // settle either way.
       supabase.from("lifecycle_trend").select("*").order("captured_on"),
-      supabase.from("player_stage_moves").select("*")
-        .order("captured_on", { ascending: false })
-        .order("deposits", { ascending: false })
-        .limit(1000),
     ]);
     if (p.error) setError(p.error.message);
     if (watch.error) setError(watch.error.message);
@@ -229,11 +231,26 @@ export default function Segments({ s, lang }) {
     setSummary(sum.data || []);
     setWatchlist(watch.data || []);
     setTrend(trend.data || []);
-    setMoves(moves.data || []);
     setLoading(false);
   }
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  // Movers for one capture at a time, refetched when the week changes.
+  useEffect(() => {
+    if (!moveWeek) return undefined;
+    let active = true;
+    (async () => {
+      const { data, error: err } = await supabase
+        .from("player_stage_moves").select("*")
+        .eq("captured_on", moveWeek)
+        .order("deposits", { ascending: false });
+      if (!active) return;
+      if (err) { setError(err.message); return; }
+      setMoves(data || []);
+    })();
+    return () => { active = false; };
+  }, [moveWeek]);
 
   const tiers = useMemo(
     () => [...new Set(players.map(p => p.vip_tier).filter(Boolean))].sort(),
@@ -295,20 +312,44 @@ export default function Segments({ s, lang }) {
     return earlier.length ? earlier[earlier.length - 1] : null;
   }, [captures, latestCapture, compareTo]);
 
+  useEffect(() => {
+    if (!moveWeek && latestCapture) setMoveWeek(latestCapture);
+  }, [latestCapture, moveWeek]);
+
   const baselineByStage = useMemo(() => Object.fromEntries(
     trend.filter(r => r.captured_on === baselineCapture)
       .map(r => [r.lifecycle, Number(r.players) || 0])
   ), [trend, baselineCapture]);
 
-  // Only the moves from the latest capture: earlier ones are history, not news.
-  const latestMoves = useMemo(() => {
-    if (!moves.length) return [];
-    const newest = moves[0].captured_on;
-    return moves.filter(m => m.captured_on === newest);
-  }, [moves]);
+  // The movers already belong to one capture, because that is how they were
+  // fetched. The newest week is the default; the picker below changes it.
+  const latestMoves = moves;
   const shownMoves = moveFilter
     ? latestMoves.filter(m => m.direction === moveFilter)
     : latestMoves;
+
+  // Every week except the first has a previous one to be compared against, so
+  // the picker lists all but the oldest capture.
+  const moveWeeks = useMemo(
+    () => captures.slice(1).reverse(),
+    [captures]
+  );
+  // capture -> stage -> players, for the grid below the cards.
+  const byCapture = useMemo(() => {
+    const by = {};
+    for (const r of trend) {
+      (by[r.captured_on] ||= {})[r.lifecycle] = Number(r.players) || 0;
+    }
+    return by;
+  }, [trend]);
+  const estimatedOn = useMemo(() => Object.fromEntries(
+    trend.map(r => [r.captured_on, r.estimated])
+  ), [trend]);
+  const uncertainOn = useMemo(() => {
+    const by = {};
+    for (const r of trend) by[r.captured_on] = (by[r.captured_on] || 0) + Number(r.uncertain || 0);
+    return by;
+  }, [trend]);
 
   const input = {
     background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8,
@@ -365,6 +406,12 @@ export default function Segments({ s, lang }) {
           {baselineCapture
             ? s.seg.compare.against.replace("{d}", fmtDay(baselineCapture, lang))
             : s.seg.compare.noHistory}
+          {/* The delta on every card hangs off this baseline, so if the
+              baseline is a reconstructed week it has to say so here, not only
+              in the grid below. */}
+          {baselineCapture && estimatedOn[baselineCapture] && (
+            <span title={s.seg.history.estimatedHint} style={{ color: "#D9A848", marginLeft: 4 }}>*</span>
+          )}
         </span>
       </div>
 
@@ -417,6 +464,65 @@ export default function Segments({ s, lang }) {
         })}
       </div>
 
+      {/* The cards give one delta. This gives the shape: whether Active is
+          still climbing or has flattened, and whether At risk is filling up
+          behind it. Nine weekly cuts, the last one captured at import time and
+          the rest reconstructed. */}
+      {captures.length > 1 && (
+        <Panel style={{ padding: 4, marginBottom: 14, overflowX: "auto" }}>
+          <div style={{ padding: "10px 12px 4px", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+            <strong style={{ fontSize: 13 }}>{s.seg.history.title}</strong>
+            <span style={{ fontSize: 11.5, color: C.inkFaint }}>{s.seg.history.sub}</span>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, position: "sticky", left: 0, background: C.panel }}>{s.seg.cols.lifecycle}</th>
+                {captures.map(c => (
+                  <th key={c} style={{ ...th, textAlign: "right" }}>
+                    {fmtDay(c, lang).replace(/ \d{4}$/, "")}
+                    {estimatedOn[c] && (
+                      <span title={s.seg.history.estimatedHint} style={{ color: "#D9A848", marginLeft: 3 }}>*</span>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {STAGES.map(stage => {
+                const goodToGrow = stage === "New" || stage === "Active";
+                return (
+                  <tr key={stage} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
+                    <td style={{ ...td, position: "sticky", left: 0, background: C.panel }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_COLORS[stage], display: "inline-block", marginRight: 7 }} />
+                      {s.seg.lifecycle[stage]}
+                    </td>
+                    {captures.map((c, i) => {
+                      const n = byCapture[c]?.[stage] ?? 0;
+                      const before = i === 0 ? null : (byCapture[captures[i - 1]]?.[stage] ?? 0);
+                      const delta = before == null ? null : n - before;
+                      return (
+                        <td key={c} style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                          {n.toLocaleString()}
+                          {delta != null && delta !== 0 && (
+                            <span style={{ marginLeft: 6, fontSize: 11, color: (delta > 0) === goodToGrow ? C.positive : C.negative }}>
+                              {delta > 0 ? "+" : ""}{delta}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p style={{ fontSize: 11, color: C.inkFaint, margin: "9px 12px 10px", maxWidth: 820 }}>
+            {s.seg.history.note}
+          </p>
+        </Panel>
+      )}
+
       {filters.stage && (
         <Panel style={{ padding: "11px 14px", marginBottom: 14, fontSize: 12.5, color: C.inkDim, borderColor: `${STAGE_COLORS[filters.stage]}66` }}>
           <strong style={{ color: C.ink }}>{s.seg.lifecycle[filters.stage]}</strong> — {s.seg.desc[filters.stage]}
@@ -429,8 +535,18 @@ export default function Segments({ s, lang }) {
       <div style={{ marginBottom: 20 }}>
         <SectionHeading title={s.seg.moves.title} subtitle={s.seg.moves.sub} />
         {latestMoves.length === 0 ? (
-          <Panel style={{ padding: "13px 16px", fontSize: 12.5, color: C.inkDim }}>
-            {captures.length < 2 ? s.seg.moves.needsTwo : s.seg.moves.none}
+          <Panel style={{ padding: "13px 16px", fontSize: 12.5, color: C.inkDim, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <span>{captures.length < 2 ? s.seg.moves.needsTwo : s.seg.moves.none}</span>
+            {moveWeeks.length > 1 && (
+              <select value={moveWeek || ""} onChange={e => { setMoveWeek(e.target.value); setMoveFilter(""); }}
+                style={{ ...input, padding: "5px 9px", fontSize: 12 }}>
+                {moveWeeks.map(c => (
+                  <option key={c} value={c}>
+                    {s.seg.history.weekTo.replace("{d}", fmtDay(c, lang))}{estimatedOn[c] ? " *" : ""}
+                  </option>
+                ))}
+              </select>
+            )}
           </Panel>
         ) : (
           <>
@@ -447,10 +563,30 @@ export default function Segments({ s, lang }) {
                   </button>
                 );
               })}
-              <span style={{ marginLeft: "auto", fontSize: 11.5, color: C.inkFaint }}>
-                {s.seg.moves.between
-                  .replace("{from}", fmtDay(latestMoves[0].prev_captured_on, lang))
-                  .replace("{to}", fmtDay(latestMoves[0].captured_on, lang))}
+              <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                {uncertainOn[moveWeek] > 0 && (
+                  <span title={s.seg.history.estimatedHint} style={{ fontSize: 11.5, color: "#D9A848" }}>
+                    {s.seg.history.uncertain.replace("{n}", String(uncertainOn[moveWeek]))}
+                  </span>
+                )}
+                <span style={{ fontSize: 11.5, color: C.inkFaint }}>
+                  {s.seg.moves.between
+                    .replace("{from}", fmtDay(latestMoves[0].prev_captured_on, lang))
+                    .replace("{to}", fmtDay(latestMoves[0].captured_on, lang))}
+                </span>
+                {/* Every week, not only the newest: the question is what the
+                    funnel did week by week, which one capture cannot answer. */}
+                {moveWeeks.length > 1 && (
+                  <select value={moveWeek || ""} onChange={e => { setMoveWeek(e.target.value); setMoveFilter(""); }}
+                    style={{ ...input, padding: "5px 9px", fontSize: 12 }}>
+                    {moveWeeks.map(c => (
+                      <option key={c} value={c}>
+                        {s.seg.history.weekTo.replace("{d}", fmtDay(c, lang))}
+                        {estimatedOn[c] ? " *" : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </span>
             </div>
             <Panel style={{ padding: 4, overflowX: "auto" }}>
