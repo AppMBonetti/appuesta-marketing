@@ -442,11 +442,13 @@ export default function Segments({ s, lang }) {
           const count = row ? Number(row.players) : 0;
           const selected = filters.stage === stage;
           const share = totalPlayers > 0 ? (count / totalPlayers) * 100 : 0;
-          // Growing "Churned" is bad news, so the colour follows the stage, not
-          // the sign of the number.
+          // Plain arithmetic colouring, as Marcos asked: + green, - red. It
+          // used to follow the stage's meaning instead -- growth in Churned
+          // painted red -- which made every delta on the page red at once and
+          // read as broken. The cost is that "Perdido +44" is now green, so
+          // the sign says direction and the stage says whether that is good.
           const before = baselineCapture ? baselineByStage[stage] ?? 0 : null;
           const change = before == null ? null : count - before;
-          const goodToGrow = stage === "New" || stage === "Active";
           return (
             <button
               key={stage}
@@ -468,7 +470,7 @@ export default function Segments({ s, lang }) {
                 {change != null && change !== 0 && (
                   <span style={{
                     fontSize: 12, fontWeight: 600,
-                    color: (change > 0) === goodToGrow ? C.positive : C.negative,
+                    color: change > 0 ? C.positive : C.negative,
                   }}>
                     {change > 0 ? "+" : ""}{change}
                   </span>
@@ -811,7 +813,6 @@ export default function Segments({ s, lang }) {
             </thead>
             <tbody>
               {STAGES.map(stage => {
-                const goodToGrow = stage === "New" || stage === "Active";
                 return (
                   <tr key={stage} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
                     <td style={{ ...td, position: "sticky", left: 0, background: C.panel }}>
@@ -826,7 +827,7 @@ export default function Segments({ s, lang }) {
                         <td key={c} style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                           {n.toLocaleString()}
                           {delta != null && delta !== 0 && (
-                            <span style={{ marginLeft: 6, fontSize: 11, color: (delta > 0) === goodToGrow ? C.positive : C.negative }}>
+                            <span style={{ marginLeft: 6, fontSize: 11, color: delta > 0 ? C.positive : C.negative }}>
                               {delta > 0 ? "+" : ""}{delta}
                             </span>
                           )}
