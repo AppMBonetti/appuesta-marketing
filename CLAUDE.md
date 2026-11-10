@@ -312,11 +312,9 @@ contacted.**
   against 9,214,774 (0.83%). **September net went 1,089,670 → −82,335** — not an
   error: a banned player's withdrawals land in the month they happened, and that
   month they exceeded what came in.
-- Still unresolved: `internal_name_patterns` matches `test,prueba,demo,qa` as a
-  **substring**, so `juliolorabaldemora@gmail.com` and `juniordemota1@gmail.com`
-  are flagged internal by the Dominican surnames Baldemora and Demota, and four
-  accounts whose random email prefix contains `qa`. Seven real players, trivial
-  money, not yet fixed.
+- The `internal_name_patterns` substring problem noted here — Dominican
+  surnames Baldemora and Demota caught by `demo` — was fixed later, in "A
+  setting nobody applies is a note, not a rule". Nothing to chase.
 
 ## Balances say what a player holds, not what they were worth
 
@@ -799,3 +797,58 @@ book's 4,071 and 20,620,776, DOP 500 of it one real player.
 It now coalesces to `'Prospecto'`, which `player_tier_progress` has always done.
 **Any new view that groups by `vip_tier` needs the same coalesce**, or it will
 silently drop players and stop tying to `house_totals`.
+
+## What is still open
+
+Written down because it lived in one conversation and nowhere else. A session
+that starts cold reads this file and nothing else, so an item that is only in a
+chat is an item that gets lost.
+
+**The transaction export has an importer and, as far as anyone has said, no
+file.** `src/lib/importers/paymentsExport.js` already parses the backoffice
+"Payments export" — one row per payment *attempt*, carrying both a `created`
+and a `completed` timestamp, keyed on the transaction id so re-exporting an
+overlapping range corrects a pending row instead of duplicating it — and the
+Imports screen already has its card. It is the only source with day-level
+deposits, which makes it the key to four things at once:
+
+- deposits by day, instead of by whatever range the payments report covers;
+- the month-straddling week, which otherwise costs a month every single month
+  and cannot be fixed in the database at all;
+- the deposit-attempt success rate, which no other file carries;
+- the created-vs-completed question below, answered from the rows rather than
+  by re-pulling twelve weekly files.
+
+Check whether anything has actually landed in `payment_transactions` before
+building on it. That was not confirmed when this was written.
+
+**Created date versus completed date.** Every week loaded so far is on the
+created-date basis — see "The payments report's period is its *Created date*
+filter". Switching is defensible and cannot be done for one week alone. The
+transaction export settles it without re-pulling anything, because each row
+carries both timestamps.
+
+**VIP tier history — "era Leyenda".** `vip_tier` is null on every
+reconstructed stage row, deliberately, because nothing stores what a tier used
+to be. It is reconstructible the same way the stage was: the tier is trailing
+90-day wagering and `bets` carries a real `bet_date`. Nobody has asked for it
+yet, so it has not been built.
+
+**GA4 arrives by hand.** `src/lib/importers/ga4.js` takes an export. Automating
+it is blocked on Google-side steps that only Marcos can do.
+
+**`player_stage_moves` grows with the history.** It computes its window over
+the whole of `player_stage_history` before filtering, so the cost rises with
+every weekly capture: 23,084 rows at 88 ms as `authenticated`. Re-time it past
+roughly 100k rows.
+
+**Six views still call `min_qualifying_deposit()` per row** — the four cohort
+views, `cohort_deposit_retention_period` and `dashboard_health`. Documented
+above; fix one when somebody reports it slow, not before.
+
+**Does `defaultMode: "auto"` work from this file?** `bypassPermissions` is
+documented as ignored in a cloud session and `auto` is the mode the dropdown
+offers, but whether it is honoured from a settings file was never verified —
+settings load at startup, so no session can test its own copy. If a session
+starts and the mode dropdown already reads Auto, it works; if it still has to
+be set by hand, delete that line and record the answer here.
