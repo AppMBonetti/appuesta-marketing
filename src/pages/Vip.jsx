@@ -10,6 +10,7 @@ import { SortHeader } from "../components/SortHeader";
 import RestrictButton from "../components/RestrictButton";
 import VipTracker from "../components/VipTracker";
 import { useSticky } from "../lib/sticky";
+import { fullPlayerId, playerIdHaystack } from "../lib/playerId";
 
 // What a tier shows for a window it has no rows in. The views cross join every
 // tier against every window, so this is a belt-and-braces default rather than
@@ -24,7 +25,7 @@ const TIER_COLORS = ["#8B93A3", "#B0555F", "#C9424F", "#E4022B", "#F03A57", "#F9
 // Raw values, not display-formatted ones: a CRM import wants 295986.87, not
 // "DOP 295,987", and dates in ISO so any system parses them the same way.
 const CSV_COLUMNS = [
-  { label: "player_id", value: p => p.id },
+  { label: "player_id", value: p => fullPlayerId(p.id) },
   { label: "name", value: p => p.name },
   { label: "email", value: p => p.email },
   { label: "vip_tier", value: p => p.vip_tier },
@@ -60,7 +61,7 @@ function normalize(text) {
 
 function matchesSearch(player, needle) {
   if (!needle) return true;
-  return [player.id, player.name, player.email, player.top_sport]
+  return [playerIdHaystack(player.id), player.name, player.email, player.top_sport]
     .some(field => normalize(field).includes(needle));
 }
 
@@ -122,8 +123,8 @@ function ProgressToNext({ player, color, s }) {
 // The drill-down under an open tier. Its own component because each tier keeps
 // its own column sort, and a hook cannot live inside the .map over tiers.
 const TIER_SORT_COLUMNS = [
-  { key: "player", kind: "text", label: s => s.tierDrill.cols.player, value: p => p.name || p.id },
-  { key: "playerId", kind: "text", label: s => s.tierDrill.cols.playerId, value: p => p.id },
+  { key: "player", kind: "text", label: s => s.tierDrill.cols.player, value: p => p.name || fullPlayerId(p.id) },
+  { key: "playerId", kind: "text", label: s => s.tierDrill.cols.playerId, value: p => fullPlayerId(p.id) },
   // The tier says what a player is worth; this says whether they are still
   // here. A Leyenda who went cold is the one row worth calling today.
   { key: "lifecycle", kind: "text", label: s => s.seg.cols.lifecycle, value: p => p.lifecycle },
@@ -158,8 +159,8 @@ function TierPlayers({ players, tier, s, lang, thStyle, tdStyle, onChanged }) {
       <tbody>
         {sorted.map(p => (
           <tr key={p.id}>
-            <td style={{ ...tdStyle, fontWeight: 500 }}>{p.name || p.id}</td>
-            <td style={{ ...tdStyle, color: C.inkFaint, fontFamily: "monospace", fontSize: 11.5 }}>{p.id}</td>
+            <td style={{ ...tdStyle, fontWeight: 500 }}>{p.name || fullPlayerId(p.id)}</td>
+            <td style={{ ...tdStyle, color: C.inkFaint, fontFamily: "monospace", fontSize: 11.5 }}>{fullPlayerId(p.id)}</td>
             <td style={tdStyle}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_COLORS[p.lifecycle] || C.inkFaint }} />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { X, Download } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import { fullPlayerId } from "../lib/playerId";
 import { C } from "../lib/theme";
 import { dateRangeLabel, formatWeek, formatMonth } from "../lib/period";
 import { downloadCsv } from "../lib/csv";
@@ -9,7 +10,7 @@ import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "./SortHeader";
 
 const CSV_COLUMNS = [
-  { label: "player_id", value: p => p.id },
+  { label: "player_id", value: p => fullPlayerId(p.id) },
   { label: "username", value: p => p.username },
   { label: "email", value: p => p.email },
   { label: "vip_tier", value: p => p.vip_tier },
@@ -28,7 +29,7 @@ const CSV_COLUMNS = [
 ];
 
 const SORT_COLUMNS = [
-  { key: "player", kind: "text", label: s => s.drill.cols.player, value: p => p.username || p.name || p.id },
+  { key: "player", kind: "text", label: s => s.drill.cols.player, value: p => p.username || p.name || fullPlayerId(p.id) },
   { key: "tier", kind: "text", label: s => s.drill.cols.tier, value: p => p.vip_tier },
   { key: "depositsInPeriod", label: s => s.ret.drill.colDepositsInPeriod, value: p => p.deposits_in_period },
   { key: "amountInPeriod", label: s => s.ret.drill.colAmountInPeriod, value: p => p.amount_in_period },
@@ -152,7 +153,7 @@ export default function CohortDrill({ s, lang, cohortWeek, period, month, onClos
                   {sorted.map(p => (
                     <tr key={p.id} style={{ background: p.retained ? "transparent" : "rgba(214,72,72,0.05)" }}>
                       <td style={{ ...td, fontWeight: 500 }}>
-                        {p.username || p.name || p.id}
+                        {p.username || p.name || fullPlayerId(p.id)}
                         <div style={{ fontSize: 11, color: C.inkFaint }}>{p.email || ""}</div>
                       </td>
                       <td style={{ ...td, color: C.inkDim }}>{p.vip_tier}</td>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Ban, RotateCcw } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { C } from "../lib/theme";
+import { fullPlayerId } from "../lib/playerId";
 
 /**
  * Marks a player banned, limited or self-excluded — or lifts it again.
@@ -30,7 +31,7 @@ import { C } from "../lib/theme";
  */
 export default function RestrictButton({ player, s, onDone, compact }) {
   const [busy, setBusy] = useState(false);
-  const label = player.username || player.name || player.id;
+  const label = player.username || player.name || fullPlayerId(player.id);
 
   async function apply(restricted, reason) {
     setBusy(true);

@@ -4,6 +4,7 @@ import {
 } from "recharts";
 import { Wallet, TrendingUp, Coins, Users, Percent, PiggyBank, ArrowLeftRight } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import { fullPlayerId } from "../lib/playerId";
 import { C } from "../lib/theme";
 import { dataAnchoredRange, dayStartUTC, dayAfterUTC, dateRangeLabel, formatWeek } from "../lib/period";
 import { SectionHeading, Panel, KpiCard, Spinner, fmtDOP, deltaOf, EmptyState } from "../components/ui";
@@ -593,7 +594,7 @@ export default function Funnel({ s, lang }) {
                 <tbody>
                   {topGgr.map(p => (
                     <tr key={p.id}>
-                      <td style={{ padding: "10px 16px", fontWeight: 500 }}>{p.name || p.id}</td>
+                      <td style={{ padding: "10px 16px", fontWeight: 500 }}>{p.name || fullPlayerId(p.id)}</td>
                       <td style={{ padding: "10px 16px", color: C.inkDim }}>{p.vip_tier || "—"}</td>
                       <td style={{ padding: "10px 16px" }}>{fmtDOP(p.total_ggr_sportsbook)}</td>
                       <td style={{ padding: "10px 16px", color: C.inkDim }}>{fmtDOP(p.total_deposit_amount)}</td>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { X, Download } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import { fullPlayerId } from "../lib/playerId";
 import { C } from "../lib/theme";
 import { addDays, formatWeek } from "../lib/period";
 import { downloadCsv } from "../lib/csv";
@@ -17,7 +18,7 @@ export const DRILLABLE = {
 };
 
 const CSV_COLUMNS = [
-  { label: "player_id", value: p => p.id },
+  { label: "player_id", value: p => fullPlayerId(p.id) },
   { label: "name", value: p => p.name },
   { label: "email", value: p => p.email },
   { label: "vip_tier", value: p => p.vip_tier },
@@ -32,7 +33,7 @@ const CSV_COLUMNS = [
 ];
 
 const SORT_COLUMNS = [
-  { key: "player", kind: "text", label: s => s.drill.cols.player, value: p => p.name || p.id },
+  { key: "player", kind: "text", label: s => s.drill.cols.player, value: p => p.name || fullPlayerId(p.id) },
   { key: "email", kind: "text", label: s => s.drill.cols.email, value: p => p.email },
   { key: "tier", kind: "text", label: s => s.drill.cols.tier, value: p => p.vip_tier },
   { key: "registered", kind: "date", label: s => s.drill.cols.registered, value: p => p.registered_at },
@@ -130,7 +131,7 @@ export default function PlayerDrill({ s, lang, metric, week, onClose }) {
                   {sorted.map(p => (
                     <tr key={p.id}>
                       <td style={{ ...td, fontWeight: 500 }}>
-                        {p.name || p.id}
+                        {p.name || fullPlayerId(p.id)}
                         {/* Marked here too, because this list gets worked
                             through. The flag is set from Segments or the VIP
                             screens; here it only has to be visible, since the

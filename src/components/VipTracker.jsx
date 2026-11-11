@@ -10,6 +10,7 @@ import RestrictButton from "./RestrictButton";
 import { Panel, Spinner, fmtDOP } from "./ui";
 import { STAGE_COLORS } from "../lib/lifecycle";
 import { useSticky } from "../lib/sticky";
+import { fullPlayerId } from "../lib/playerId";
 
 /**
  * The people at the top of the VIP ladder, and whether each one is still here.
@@ -38,7 +39,7 @@ const NEEDS_ATTENTION = ["Churned", "At risk", "Cooling"];
 const THIN_CUSHION = 0.25;
 
 const CSV_COLUMNS = [
-  { label: "player_id", value: p => p.id },
+  { label: "player_id", value: p => fullPlayerId(p.id) },
   { label: "username", value: p => p.username },
   { label: "email", value: p => p.email },
   { label: "vip_tier", value: p => p.vip_tier },
@@ -151,7 +152,7 @@ function Field({ label, value, tone }) {
 
 const SORT_COLUMNS = [
   { key: "tier", kind: "text", label: s => s.vipTrack.cols.tier, value: p => p.tierOrder },
-  { key: "player", kind: "text", label: s => s.vipTrack.cols.player, value: p => p.username || p.name || p.id },
+  { key: "player", kind: "text", label: s => s.vipTrack.cols.player, value: p => p.username || p.name || fullPlayerId(p.id) },
   { key: "lastDeposit", kind: "date", label: s => s.vipTrack.cols.lastDeposit, value: p => p.last_deposit_date },
   { key: "lastLogin", kind: "date", label: s => s.vipTrack.cols.lastLogin, value: p => p.last_login_at },
   { key: "deposited", align: "right", label: s => s.vipTrack.cols.deposited, value: p => p.deposits },
@@ -428,7 +429,7 @@ function Row({ p, s, lang, td, num, isOpen, onToggle, onNotesChanged, onChanged,
         <td style={{ ...td, fontWeight: 500, maxWidth: 230 }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <Chevron size={13} color={C.inkFaint} style={{ flexShrink: 0 }} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{p.username || p.name || p.id}</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{p.username || p.name || fullPlayerId(p.id)}</span>
             {/* Counts in every figure, must not be contacted. */}
             {p.restricted && (
               <span title={p.restriction_reason || s.seg.restrictedHint}
@@ -539,7 +540,7 @@ function Detail({ p, s, lang, onNotesChanged }) {
           : null} />
         <Field label={d.username} value={p.username} />
         <Field label={d.country} value={p.country} />
-        <Field label={d.playerId} value={p.id} />
+        <Field label={d.playerId} value={fullPlayerId(p.id)} />
       </div>
 
       <div style={heading}>{d.money}</div>

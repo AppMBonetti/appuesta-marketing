@@ -9,6 +9,7 @@ import { SortHeader } from "../components/SortHeader";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
 import RestrictButton from "../components/RestrictButton";
 import { STAGES, STAGE_COLORS } from "../lib/lifecycle";
+import { fullPlayerId, playerIdHaystack } from "../lib/playerId";
 import { useSticky } from "../lib/sticky";
 
 // Ordered by where a player sits in the funnel, not alphabetically, so the
@@ -16,7 +17,7 @@ import { useSticky } from "../lib/sticky";
 // Which header sorts on what. Keys line up with the header row below; a column
 // with no key (the action button) is not sortable.
 const SORT_COLUMNS = [
-  { key: "id", kind: "text", label: s => s.seg.cols.id, value: p => p.id },
+  { key: "id", kind: "text", label: s => s.seg.cols.id, value: p => fullPlayerId(p.id) },
   { key: "player", kind: "text", label: s => s.seg.cols.player, value: p => p.name || p.username || p.email },
   { key: "lifecycle", kind: "text", label: s => s.seg.cols.lifecycle, value: p => p.lifecycle },
   { key: "tier", kind: "text", label: s => s.seg.cols.tier, value: p => p.vip_tier },
@@ -38,7 +39,7 @@ const SORT_COLUMNS = [
 ];
 
 const WATCH_SORT_COLUMNS = [
-  { key: "id", kind: "text", label: s => s.seg.cols.id, value: w => w.id },
+  { key: "id", kind: "text", label: s => s.seg.cols.id, value: w => fullPlayerId(w.id) },
   { key: "player", kind: "text", label: s => s.seg.cols.player, value: w => w.username || w.name || w.email },
   { key: "flag", kind: "text", label: s => s.seg.watch.cols.flag, value: w => w.flag },
   { key: "reason", kind: "text", label: s => s.seg.watch.cols.reason, value: w => w.exclusion_reason },
@@ -56,7 +57,7 @@ const WATCH_FLAGS = ["excluded", "internal", "duplicate"];
 const WATCH_COLORS = { excluded: "#E4022B", internal: "#8B93A3", duplicate: "#D9A848" };
 
 const WATCH_CSV_COLUMNS = [
-  { label: "player_id", value: p => p.id },
+  { label: "player_id", value: p => fullPlayerId(p.id) },
   { label: "username", value: p => p.username },
   { label: "name", value: p => p.name },
   { label: "email", value: p => p.email },
@@ -78,7 +79,7 @@ const WATCH_CSV_COLUMNS = [
 ];
 
 const CSV_COLUMNS = [
-  { label: "player_id", value: p => p.id },
+  { label: "player_id", value: p => fullPlayerId(p.id) },
   { label: "name", value: p => p.name },
   { label: "email", value: p => p.email },
   { label: "lifecycle", value: p => p.lifecycle },
@@ -163,7 +164,7 @@ export default function Segments({ s, lang }) {
   // asks for a reason and then reloads rather than hiding the row locally and
   // letting the figures above disagree with the list below.
   async function excludePlayer(player) {
-    const reason = window.prompt(s.seg.excludePrompt.replace("{player}", player.username || player.name || player.id));
+    const reason = window.prompt(s.seg.excludePrompt.replace("{player}", player.username || player.name || fullPlayerId(player.id)));
     if (reason === null) return;
     setExcluding(player.id);
     const { error: err } = await supabase.rpc("set_player_excluded", {
@@ -280,7 +281,7 @@ export default function Segments({ s, lang }) {
       if (minDeposits != null && Number(p.deposits || 0) < minDeposits) return false;
       if (minBets != null && Number(p.bets || 0) < minBets) return false;
       if (needle) {
-        const haystack = `${p.name || ""} ${p.email || ""} ${p.id}`.toLowerCase();
+        const haystack = `${p.name || ""} ${p.email || ""} ${playerIdHaystack(p.id)}`.toLowerCase();
         if (!haystack.includes(needle)) return false;
       }
       return true;
@@ -561,7 +562,7 @@ export default function Segments({ s, lang }) {
             <tbody>
               {sorted.map(p => (
                 <tr key={p.id}>
-                  <td style={{ ...td, color: C.inkFaint, fontVariantNumeric: "tabular-nums" }}>{p.id}</td>
+                  <td style={{ ...td, color: C.inkFaint, fontVariantNumeric: "tabular-nums" }}>{fullPlayerId(p.id)}</td>
                   <td style={{ ...td, fontWeight: 500 }}>
                     {p.name || "—"}
                     <div style={{ fontSize: 11, color: C.inkFaint }}>{p.email || ""}</div>
@@ -698,7 +699,7 @@ export default function Segments({ s, lang }) {
                 <div>
                   {s.seg.watch.reentry.replace("{n}", String(reentry.length))}
                   <div style={{ color: C.ink, marginTop: 5 }}>
-                    {reentry.map(w => `${w.username} (${w.id})`).join(" · ")}
+                    {reentry.map(w => `${w.username} (${fullPlayerId(w.id)})`).join(" · ")}
                   </div>
                 </div>
               </div>
@@ -739,7 +740,7 @@ export default function Segments({ s, lang }) {
                 <tbody>
                   {watchSorted.map(w => (
                     <tr key={w.id} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
-                      <td style={{ ...td, color: C.inkFaint, fontSize: 11.5 }}>{w.id}</td>
+                      <td style={{ ...td, color: C.inkFaint, fontSize: 11.5 }}>{fullPlayerId(w.id)}</td>
                       <td style={td}>
                         <div>{w.username || w.name || "—"}</div>
                         <div style={{ color: C.inkFaint, fontSize: 11 }}>{w.email}</div>
@@ -918,7 +919,7 @@ export default function Segments({ s, lang }) {
                   {shownMoves.map(m => (
                     <tr key={`${m.player_id}|${m.captured_on}`} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
                       <td style={{ ...td, fontWeight: 500 }}>
-                        {m.name || m.username || m.player_id}
+                        {m.name || m.username || fullPlayerId(m.player_id)}
                         {m.restricted && (
                           <span title={m.restriction_reason || s.seg.restrictedHint}
                             style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
