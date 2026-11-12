@@ -127,7 +127,7 @@ function fmtDay(value, lang) {
 }
 
 const EMPTY_FILTERS = {
-  stage: "", tier: "", sport: "", search: "", minDeposits: "", minBets: "",
+  stages: [], tier: "", sport: "", search: "", minDeposits: "", minBets: "",
   login: "", engaged: false,
 };
 
@@ -269,7 +269,9 @@ export default function Segments({ s, lang }) {
     const minDeposits = filters.minDeposits === "" ? null : Number(filters.minDeposits);
     const minBets = filters.minBets === "" ? null : Number(filters.minBets);
     return players.filter(p => {
-      if (filters.stage && p.lifecycle !== filters.stage) return false;
+      // An empty selection means every stage, exactly as the single-value
+      // form meant when it held "".
+      if (filters.stages.length && !filters.stages.includes(p.lifecycle)) return false;
       if (filters.tier && p.vip_tier !== filters.tier) return false;
       if (filters.sport && p.top_sport !== filters.sport) return false;
       if (filters.login && p.login_recency !== filters.login) return false;
@@ -363,7 +365,7 @@ export default function Segments({ s, lang }) {
   const dateOf = v => (v ? String(v).slice(0, 10) : s.seg.never);
 
   function exportSegment() {
-    const parts = [filters.stage, filters.tier, filters.sport, filters.login,
+    const parts = [...filters.stages, filters.tier, filters.sport, filters.login,
       filters.engaged ? "engaged-not-depositing" : "",
       hideRestricted ? "sin-restringidos" : ""].filter(Boolean);
     const label = parts.length ? parts.join("-") : "todos";
@@ -441,7 +443,7 @@ export default function Segments({ s, lang }) {
         {STAGES.map(stage => {
           const row = byStage[stage];
           const count = row ? Number(row.players) : 0;
-          const selected = filters.stage === stage;
+          const selected = filters.stages.includes(stage);
           const share = totalPlayers > 0 ? (count / totalPlayers) * 100 : 0;
           // Plain arithmetic colouring, as Marcos asked: + green, - red. It
           // used to follow the stage's meaning instead -- growth in Churned
@@ -453,7 +455,13 @@ export default function Segments({ s, lang }) {
           return (
             <button
               key={stage}
-              onClick={() => setFilters(f => ({ ...f, stage: selected ? "" : stage }))}
+              // Adds and removes rather than replacing, so "En riesgo and
+              // Perdido" is two clicks instead of impossible. Clearing is
+              // clicking the card again, or "limpiar filtros".
+              onClick={() => setFilters(f => ({
+                ...f,
+                stages: selected ? f.stages.filter(x => x !== stage) : [...f.stages, stage],
+              }))}
               title={s.seg.desc[stage]}
               style={{
                 flex: "1 1 150px", minWidth: 150, textAlign: "left", cursor: "pointer",
@@ -488,9 +496,23 @@ export default function Segments({ s, lang }) {
         })}
       </div>
 
-      {filters.stage && (
-        <Panel style={{ padding: "11px 14px", marginBottom: 14, fontSize: 12.5, color: C.inkDim, borderColor: `${STAGE_COLORS[filters.stage]}66` }}>
-          <strong style={{ color: C.ink }}>{s.seg.lifecycle[filters.stage]}</strong> — {s.seg.desc[filters.stage]}
+      {filters.stages.length > 0 && (
+        <Panel style={{ padding: "11px 14px", marginBottom: 14, fontSize: 12.5, color: C.inkDim, display: "flex", flexDirection: "column", gap: 7 }}>
+          {/* Funnel order, not the order they were clicked: the panel is read
+              as a ladder and would be confusing shuffled. */}
+          {STAGES.filter(st => filters.stages.includes(st)).map(st => (
+            <div key={st}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_COLORS[st], display: "inline-block", marginRight: 7 }} />
+              <strong style={{ color: C.ink }}>{s.seg.lifecycle[st]}</strong> — {s.seg.desc[st]}
+            </div>
+          ))}
+          {filters.stages.length > 1 && (
+            <div style={{ color: C.inkFaint, fontSize: 11.5 }}>
+              {s.seg.stagesPicked
+                .replace("{n}", String(filters.stages.length))
+                .replace("{total}", filtered.length.toLocaleString())}
+            </div>
+          )}
         </Panel>
       )}
 
