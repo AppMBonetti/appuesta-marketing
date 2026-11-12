@@ -133,6 +133,7 @@ export const STRINGS = {
         note: "La etapa se guarda al importar, con la fecha hasta donde llegan los datos, no la del calendario. Las semanas anteriores al 1 de noviembre se reconstruyeron hacia atrás: los depósitos por semana salen del reporte de pagos y las apuestas traen fecha real, así que lo único estimado es el día exacto del último depósito dentro de su semana.",
       },
       tabs: { players: "Jugadores", moves: "Movimiento semanal" },
+      stagesPicked: "{n} etapas seleccionadas · {total} jugadores. Haz clic en una tarjeta para quitarla.",
       history: {
         title: "Historial semanal por etapa",
         sub: "Cuántos jugadores había en cada etapa al cierre de cada semana, y el cambio contra la semana anterior",
@@ -642,6 +643,7 @@ export const STRINGS = {
         note: "The stage is captured at import time, dated by how far the data reaches rather than by the calendar. The weeks before 1 November were reconstructed backwards: weekly deposits come from the payments report and bets carry a real date, so the only estimated part is which day inside its week the last deposit fell on.",
       },
       tabs: { players: "Players", moves: "Weekly movement" },
+      stagesPicked: "{n} stages selected · {total} players. Click a card again to drop it.",
       history: {
         title: "Weekly stage history",
         sub: "How many players were in each stage at the close of each week, and the change against the week before",
