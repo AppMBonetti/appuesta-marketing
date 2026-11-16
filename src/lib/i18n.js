@@ -101,6 +101,8 @@ export const STRINGS = {
     seg: {
       liveHook: "en juego",
       liveHookHint: "Tiene una apuesta abierta o una que se liquidó en los últimos 3 días. El segmento mide lo que hizo el jugador; esto marca que igual hay razón para contactarlo.",
+      onBalance: "con saldo",
+      onBalanceHint: "Activo por jugar, no por depositar: lleva 8 días o más sin depositar pero apostó en los últimos 3 días y todavía tiene efectivo propio en la cuenta. Cuenta el saldo en efectivo, no el de bono — un saldo que es todo bono no es su dinero. La acción aquí es empujar un depósito, no recuperarlo.",
       restricted: "Restringido",
       restrictedHint: "Baneado, limitado o auto-excluido. Su dinero cuenta en todas las cifras — depositó pesos de verdad y al banearlo se le devolvió el balance — pero no hay que contactarlo.",
       title: "Segmentos de jugadores", sub: "Ciclo de vida, comportamiento de apuesta y micro-segmentos accionables",
@@ -111,7 +113,7 @@ export const STRINGS = {
       desc: {
         Registered: "Se registró y nunca depositó, o depositó menos del mínimo. Acción: bono de bienvenida / empuje al primer depósito.",
         New: "Depositó en los últimos 7 días, una sola vez en su vida, y lleva menos de 5 apuestas. Acción: empujar al segundo depósito.",
-        Active: "Depositó en los últimos 7 días y tiene 2+ depósitos o 5+ apuestas. Un jugador con un solo depósito pero 5+ apuestas cuenta aquí, no en Nuevo. Acción: mejora de cuota, no hace falta descuento.",
+        Active: "Depositó en los últimos 7 días y tiene 2+ depósitos o 5+ apuestas — o lleva más de 7 días sin depositar pero apostó en los últimos 3 días y le queda saldo en efectivo propio. Un jugador con un solo depósito pero 5+ apuestas cuenta aquí, no en Nuevo. Acción: mejora de cuota, no hace falta descuento.",
         Casual: "Depositó en la última semana pero una sola vez, lleva más de un mes como cliente y apuesta poco. Acción: reactivar con una oferta concreta.",
         Cooling: "8 a 14 días sin depositar. Acción: apuesta gratis de reactivación.",
         "At risk": "15 a 29 días sin depositar. Acción: bono de mayor valor.",
@@ -611,6 +613,8 @@ export const STRINGS = {
     seg: {
       liveHook: "live",
       liveHookHint: "Has an open bet, or one the house settled in the last 3 days. The segment measures what the player did; this flags that there is a reason to reach out anyway.",
+      onBalance: "on balance",
+      onBalanceHint: "Active for playing, not for depositing: 8 or more days without a deposit, but bet within the last 3 days and still holds cash of their own. Cash balance, not bonus — a balance that is all bonus is not their money. The action here is a deposit nudge, not a win-back.",
       restricted: "Restricted",
       restrictedHint: "Banned, limited or self-excluded. Their money counts in every figure — they deposited real pesos and the balance was returned on the ban — but they must not be contacted.",
       title: "Player segments", sub: "Lifecycle, betting behaviour and actionable micro-segments",
@@ -621,7 +625,7 @@ export const STRINGS = {
       desc: {
         Registered: "Signed up and never deposited, or deposited below the floor. Action: welcome bonus / first-deposit push.",
         New: "Deposited in the last 7 days, exactly once ever, and has fewer than 5 bets. Action: push for the second deposit.",
-        Active: "Deposited in the last 7 days and has 2+ deposits or 5+ bets. A player with a single deposit but 5+ bets counts here, not in New. Action: odds boost, no discount needed.",
+        Active: "Deposited in the last 7 days and has 2+ deposits or 5+ bets — or has gone 8+ days without depositing but bet within the last 3 days and still holds cash of their own. A player with a single deposit but 5+ bets counts here, not in New. Action: odds boost, no discount needed.",
         Casual: "Deposited in the last week but only ever once, over a month as a customer, and barely bets. Action: reactivate with a concrete offer.",
         Cooling: "8 to 14 days without depositing. Action: reactivation free bet.",
         "At risk": "15 to 29 days without depositing. Action: higher-value bonus.",

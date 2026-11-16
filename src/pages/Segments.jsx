@@ -113,6 +113,7 @@ const CSV_COLUMNS = [
   { label: "days_since_deposit", value: p => p.days_since_deposit },
   { label: "days_since_bet", value: p => p.days_since_bet },
   { label: "engaged_not_depositing", value: p => (p.engaged_not_depositing ? "yes" : "no") },
+  { label: "active_on_balance", value: p => (p.active_on_balance ? "yes" : "no") },
 ];
 
 // Login-recency buckets in the order they read as a decay curve, so the filter
@@ -600,6 +601,15 @@ export default function Segments({ s, lang }) {
                         <span title={p.restriction_reason || s.seg.restrictedHint}
                           style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px" }}>
                           {s.seg.restricted}
+                        </span>
+                      )}
+                      {/* Active without a recent deposit, because they are
+                          betting their own cash. Worth marking: the action for
+                          this player is a deposit nudge, not a win-back. */}
+                      {p.active_on_balance && (
+                        <span title={s.seg.onBalanceHint}
+                          style={{ color: C.positive, fontSize: 10, border: `1px solid ${C.positive}55`, borderRadius: 5, padding: "1px 5px" }}>
+                          {s.seg.onBalance}
                         </span>
                       )}
                       {p.has_live_hook && (
