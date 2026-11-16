@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, CalendarClock } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
-import { C } from "../lib/theme";
+import { C, alpha } from "../lib/theme";
 import { SectionHeading, Panel, Spinner, fmtDOP } from "./ui";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "./SortHeader";
@@ -62,13 +62,13 @@ export default function DataCoverage({ s, lang }) {
           <CheckCircle2 size={14} /> {s.coverage.allCovered}
         </Panel>
       ) : (
-        <Panel style={{ marginBottom: 20, borderColor: `${C.negative}40` }}>
+        <Panel style={{ marginBottom: 20, borderColor: `${alpha(C.negative, 25)}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.negative, fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
             <AlertTriangle size={15} /> {missing.length} {s.coverage.missingDays}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {missing.map(d => (
-              <span key={d.day} style={{ background: "#2C1B1A", border: `1px solid ${C.negative}40`, color: C.negative, borderRadius: 7, padding: "4px 9px", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+              <span key={d.day} style={{ background: C.dangerSoft, border: `1px solid ${alpha(C.negative, 25)}`, color: C.negative, borderRadius: 7, padding: "4px 9px", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
                 {d.day}
               </span>
             ))}
@@ -83,7 +83,7 @@ export default function DataCoverage({ s, lang }) {
           <CheckCircle2 size={14} /> {s.coverage.staleNone}
         </Panel>
       ) : (
-        <Panel style={{ marginBottom: 24, borderColor: `${C.negative}40` }}>
+        <Panel style={{ marginBottom: 24, borderColor: `${alpha(C.negative, 25)}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.negative, fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
             <CalendarClock size={15} /> {stale.length} · {fmtDOP(staleTotal)} {s.coverage.potentialCol.toLowerCase()}
           </div>

@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import {
   LayoutGrid, TrendingUp, Users, Repeat, Crown, NotebookPen,
   SlidersHorizontal, UploadCloud, UsersRound, Handshake, ArrowUpRight,
+  Sun, Moon, Clock,
 } from "lucide-react";
 import { C } from "./lib/theme";
+import { useTheme } from "./lib/useTheme";
 import { getCurrencyState, loadFxRate, restoreCurrency, setCurrency } from "./lib/currency";
 import { STRINGS } from "./lib/i18n";
 import { useAuth } from "./lib/AuthContext";
@@ -31,6 +33,10 @@ export default function App() {
   const [lang, setLang] = useState("es");
   const { status } = useAuth();
   const s = STRINGS[lang];
+  // At the top, so the login screen and the missing-credentials screen are
+  // themed as well. It returns nothing the shell needs -- the switch is an
+  // attribute on <html> -- but it has to run somewhere that is always mounted.
+  const theme = useTheme();
 
   // Without credentials nothing can load, so say so plainly rather than
   // leaving a permanent spinner or an empty dashboard to be misread as "no data".
@@ -61,10 +67,10 @@ export default function App() {
     return <NotAuthorized s={s} />;
   }
 
-  return <Dashboard lang={lang} setLang={setLang} s={s} />;
+  return <Dashboard lang={lang} setLang={setLang} s={s} theme={theme} />;
 }
 
-function Dashboard({ lang, setLang, s }) {
+function Dashboard({ lang, setLang, s, theme }) {
   // Closing the dashboard and coming back should land where you left off, not
   // reset to Overview. Reads are guarded because a private window or blocked
   // site data makes localStorage throw rather than return null.
@@ -122,7 +128,7 @@ function Dashboard({ lang, setLang, s }) {
         {NAV.map(item => {
           const active = tab === item.id; const Icon = item.icon;
           return (
-            <button key={item.id} onClick={() => setTab(item.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 9, border: "none", cursor: "pointer", textAlign: "left", background: active ? "#1C1013" : "transparent", color: active ? C.ink : C.inkDim, fontSize: 13.5, fontWeight: active ? 600 : 500, position: "relative" }}>
+            <button key={item.id} onClick={() => setTab(item.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 9, border: "none", cursor: "pointer", textAlign: "left", background: active ? C.navActive : "transparent", color: active ? C.ink : C.inkDim, fontSize: 13.5, fontWeight: active ? 600 : 500, position: "relative" }}>
               <Icon size={15} color={active ? C.accent : C.inkFaint} />{item.label}
               {item.flag && <span style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: 99, background: C.accent }} />}
             </button>
@@ -157,6 +163,24 @@ function Dashboard({ lang, setLang, s }) {
               1 USD = {(fx.dopPerUsd ?? fxRate)?.toFixed(2)} DOP
             </div>
           )}
+          {/* Automatic by the clock, light from 07:00 and dark from 19:00, with
+              a manual override that sticks per browser. Three states rather
+              than a switch: "auto" is a real choice and has to be returnable
+              to, which a two-way toggle cannot express. */}
+          <div style={{ display: "flex", gap: 3, background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3 }}>
+            {[["auto", Clock, s.theme.auto], ["light", Sun, s.theme.light], ["dark", Moon, s.theme.dark]].map(([m, Icon, label]) => (
+              <button key={m} onClick={() => theme.setMode(m)}
+                title={m === "auto" ? s.theme.autoHint.replace("{resolved}", s.theme[theme.resolved]) : label}
+                style={{
+                  flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                  padding: "6px 4px", borderRadius: 7, border: "none", cursor: "pointer",
+                  background: theme.mode === m ? C.accent : "transparent",
+                  color: theme.mode === m ? "#fff" : C.inkDim, fontSize: 11.5,
+                }}>
+                <Icon size={12} /> {label}
+              </button>
+            ))}
+          </div>
           <button onClick={() => setLang(l => l === "es" ? "en" : "es")} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px", borderRadius: 9, border: `1px solid ${C.panelBorder}`, background: "transparent", color: C.inkDim, fontSize: 12.5, cursor: "pointer" }}>🌐 {lang === "es" ? "Español" : "English"} · {s.langToggle}</button>
           <button onClick={signOut} style={{ width: "100%", padding: "7px 10px", borderRadius: 9, border: "none", background: "transparent", color: C.inkFaint, fontSize: 12, cursor: "pointer" }}>{s.signOut}</button>
         </div>

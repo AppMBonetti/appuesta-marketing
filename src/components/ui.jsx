@@ -39,9 +39,9 @@ export function PeriodBar({ s, period, setPeriod, customStart, setCustomStart, c
       {period === "custom" ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.inkDim }}>
           <span>{s.from}</span>
-          <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 7, color: C.ink, padding: "5px 8px", fontSize: 12.5 }} />
+          <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 7, color: C.ink, padding: "5px 8px", fontSize: 12.5 }} />
           <span>{s.to}</span>
-          <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 7, color: C.ink, padding: "5px 8px", fontSize: 12.5 }} />
+          <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 7, color: C.ink, padding: "5px 8px", fontSize: 12.5 }} />
         </div>
       ) : <span style={{ fontSize: 12, color: C.inkFaint }}>{period === "week" ? s.period.vsWeek : s.period.vsMonth}</span>}
     </div>

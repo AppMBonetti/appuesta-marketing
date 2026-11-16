@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Ban, RotateCcw } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
-import { C } from "../lib/theme";
+import { C, alpha } from "../lib/theme";
 import { fullPlayerId } from "../lib/playerId";
 
 /**
@@ -72,7 +72,7 @@ export default function RestrictButton({ player, s, onDone, compact }) {
       style={{
         display: "inline-flex", alignItems: "center", gap: 5,
         padding: "4px 9px", borderRadius: 7,
-        border: `1px solid ${player.restricted ? `${C.accent}66` : C.panelBorder}`,
+        border: `1px solid ${player.restricted ? `${alpha(C.accent, 40)}` : C.panelBorder}`,
         background: "transparent",
         color: player.restricted ? C.accent : C.inkFaint,
         fontSize: 11.5, whiteSpace: "nowrap",

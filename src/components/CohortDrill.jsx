@@ -101,7 +101,7 @@ export default function CohortDrill({ s, lang, cohortWeek, period, month, onClos
 
   return (
     <div onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(8,10,14,0.72)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      style={{ position: "fixed", inset: 0, background: C.overlay, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={e => e.stopPropagation()}
         style={{ background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 14, width: "min(1180px, 100%)", maxHeight: "86vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
@@ -119,17 +119,17 @@ export default function CohortDrill({ s, lang, cohortWeek, period, month, onClos
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div style={{ display: "flex", background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
+            <div style={{ display: "flex", background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
               {["all", "retained", "lapsed"].map(k => (
                 <button key={k} onClick={() => setOnly(k)}
-                  style={{ padding: "5px 11px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, background: only === k ? "#2A303B" : "transparent", color: only === k ? C.ink : C.inkDim }}>
+                  style={{ padding: "5px 11px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, background: only === k ? C.panelBorder : "transparent", color: only === k ? C.ink : C.inkDim }}>
                   {s.ret.drill[k]}
                 </button>
               ))}
             </div>
             {shown.length > 0 && (
               <button onClick={() => downloadCsv(`appuesta-cohorte-${cohortWeek}-${period.start}.csv`, CSV_COLUMNS, sorted)}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5, cursor: "pointer" }}>
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: C.inset, color: C.ink, fontSize: 12.5, cursor: "pointer" }}>
                 <Download size={13} /> {s.drill.export}
               </button>
             )}

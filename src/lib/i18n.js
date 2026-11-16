@@ -98,6 +98,10 @@ export const STRINGS = {
       lowerIsBetter: "menor es mejor",
       saved: "Guardado", saveAll: "Guardar metas",
     },
+    theme: {
+      auto: "Auto", light: "Claro", dark: "Oscuro",
+      autoHint: "Automático por la hora: claro de 7:00 a 19:00, oscuro el resto. Ahora mismo está en {resolved}.",
+    },
     seg: {
       liveHook: "en juego",
       liveHookHint: "Tiene una apuesta abierta o una que se liquidó en los últimos 3 días. El segmento mide lo que hizo el jugador; esto marca que igual hay razón para contactarlo.",
@@ -618,6 +622,10 @@ export const STRINGS = {
       },
       lowerIsBetter: "lower is better",
       saved: "Saved", saveAll: "Save goals",
+    },
+    theme: {
+      auto: "Auto", light: "Light", dark: "Dark",
+      autoHint: "Automatic by the clock: light from 07:00 to 19:00, dark otherwise. Right now it is {resolved}.",
     },
     seg: {
       liveHook: "live",

@@ -50,7 +50,7 @@ function Comparison({ title, subtitle, current, previous, s, partial }) {
       <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
       <div style={{ fontSize: 11.5, color: C.inkDim, marginTop: 2 }}>
         {subtitle}
-        {partial && <span style={{ color: "#D9A848", marginLeft: 6 }}>{s.dep.partial}</span>}
+        {partial && <span style={{ color: C.warn, marginLeft: 6 }}>{s.dep.partial}</span>}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
         {metrics.map(m => (
@@ -177,7 +177,7 @@ export default function DepositTrends({ s, lang, weeks, months, days, grain }) {
                       {formatMonth(m.month_start, lang)}
                       {m.complete === false && (
                         <span title={s.dep.partialHint.replace("{d}", m.covered_to)}
-                          style={{ color: "#D9A848", fontSize: 10.5, marginLeft: 6 }}>
+                          style={{ color: C.warn, fontSize: 10.5, marginLeft: 6 }}>
                           {s.dep.partial}
                         </span>
                       )}

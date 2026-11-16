@@ -124,7 +124,7 @@ export default function GoalTracker({ s, lang, month = currentBudgetMonth() }) {
                 {s.cfg.goals[t.key]}
                 {t.metric === "depositAmount" && depositsPartial && (
                   <span title={s.goalTrack.depositsPartialHint}
-                    style={{ color: "#D9A848", marginLeft: 5, cursor: "help", textTransform: "none" }}>
+                    style={{ color: C.warn, marginLeft: 5, cursor: "help", textTransform: "none" }}>
                     {s.goalTrack.incomplete}
                   </span>
                 )}
@@ -133,7 +133,7 @@ export default function GoalTracker({ s, lang, month = currentBudgetMonth() }) {
                 <span style={{ fontSize: 19, fontWeight: 600, fontFamily: "'Space Grotesk', sans-serif" }}>{fmt(actual)}</span>
                 <span style={{ fontSize: 12, color: C.inkFaint }}>/ {fmt(target)}</span>
               </div>
-              <div style={{ background: "#1D222B", borderRadius: 6, height: 7, overflow: "hidden", marginBottom: 7 }}>
+              <div style={{ background: C.inset, borderRadius: 6, height: 7, overflow: "hidden", marginBottom: 7 }}>
                 <div style={{ width: `${Math.min(pct ?? 0, 100)}%`, height: "100%", borderRadius: 6, background: good == null ? C.inkFaint : good ? C.positive : C.negative }} />
               </div>
               <div style={{ fontSize: 11.5, color: good == null ? C.inkFaint : good ? C.positive : C.negative }}>
@@ -149,8 +149,8 @@ export default function GoalTracker({ s, lang, month = currentBudgetMonth() }) {
           looked like a bug. Say it in the open, with the remedy. */}
       {depositsPartial && (
         <p style={{
-          color: "#D9A848", fontSize: 12, margin: "10px 0 0", maxWidth: 760,
-          background: "#231E14", border: "1px solid #D9A84833",
+          color: C.warn, fontSize: 12, margin: "10px 0 0", maxWidth: 760,
+          background: C.warnSoft, border: `1px solid ${C.warnBorder}`,
           borderRadius: 10, padding: "10px 13px",
         }}>
           {s.goalTrack.depositsPartialFix}

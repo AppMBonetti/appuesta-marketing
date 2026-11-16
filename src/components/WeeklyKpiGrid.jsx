@@ -84,7 +84,7 @@ export default function WeeklyKpiGrid({ s, lang, weeks, rowsByWeek, onEditSpend,
                       title={s.wk.straddles
                         .replace("{n}", String(split.outside))
                         .replace("{month}", formatMonth(split.otherMonth, lang))}
-                      style={{ color: "#D9A848", marginLeft: 4, cursor: "help" }}
+                      style={{ color: C.warn, marginLeft: 4, cursor: "help" }}
                     >*</span>
                   )}
                 </th>
@@ -106,7 +106,7 @@ export default function WeeklyKpiGrid({ s, lang, weeks, rowsByWeek, onEditSpend,
                 <td
                   colSpan={1 + weeks.length * 2}
                   style={{
-                    ...labelCell, position: "static", background: "#1B2029",
+                    ...labelCell, position: "static", background: C.headCell,
                     fontWeight: 700, fontSize: 11, letterSpacing: 0.5,
                     textTransform: "uppercase", color: C.inkDim,
                     borderTop: `1px solid ${C.panelBorder}`,
@@ -156,7 +156,7 @@ export default function WeeklyKpiGrid({ s, lang, weeks, rowsByWeek, onEditSpend,
                               if (e.key === "Enter") commitSpend(week);
                               if (e.key === "Escape") setEditing(null);
                             }}
-                            style={{ width: 92, background: "#1D222B", border: `1px solid ${C.accent}`, borderRadius: 6, color: C.ink, padding: "4px 6px", fontSize: 12.5, textAlign: "right" }}
+                            style={{ width: 92, background: C.inset, border: `1px solid ${C.accent}`, borderRadius: 6, color: C.ink, padding: "4px 6px", fontSize: 12.5, textAlign: "right" }}
                           />
                         ) : savingWeek === week && row.editable ? (
                           <Spinner />
@@ -170,7 +170,7 @@ export default function WeeklyKpiGrid({ s, lang, weeks, rowsByWeek, onEditSpend,
                               // nobody can tell it apart from what the source said.
                               <span
                                 title={s.manual.sub}
-                                style={{ color: "#D9A848", fontSize: 10.5, marginLeft: 5 }}
+                                style={{ color: C.warn, fontSize: 10.5, marginLeft: 5 }}
                               >
                                 {s.manual.badge}
                               </span>

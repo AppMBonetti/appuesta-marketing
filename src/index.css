@@ -1,11 +1,80 @@
+/* The two palettes. `src/lib/theme.js` points every token at these, and the
+   mode is one attribute on <html>, set by useTheme(). */
+
+:root,
+:root[data-theme="dark"] {
+  --c-bg: #0F1115;
+  --c-panel: #161A21;
+  --c-panel-border: #242933;
+  --c-inset: #1D222B;
+  --c-row-open: #1A1F28;
+  --c-ink: #EDEFF3;
+  --c-ink-dim: #8B93A3;
+  --c-ink-faint: #565E6D;
+  --c-accent: #E4022B;
+  --c-accent-dim: #7A0217;
+  --c-positive: #3ECB9E;
+  --c-positive-soft: #132A24;
+  --c-negative: #F2994A;
+  --c-warn: #D9A848;
+  --c-warn-soft: #241A0E;
+  --c-danger-soft: #2C1B1A;
+  --c-overlay: rgba(8, 10, 14, 0.72);
+  --c-scrollbar: #2A303B;
+  --c-warn-border: rgba(217, 168, 72, 0.33);
+  --c-nav-active: #1C1013;
+  --c-head-cell: #1B2029;
+  --c-field: #141820;
+  --c-pinned: #231D14;
+  --c-empty-cell: #171B22;
+}
+
+/* Light is not the dark palette inverted. Three of the accents had to be
+   darkened to stay readable on white: the mint green and the amber both pass
+   on #161A21 and fail on #FFFFFF, and the red loses too much weight. The
+   greys were rebalanced the same way — `inkDim` and `inkFaint` have to stay
+   distinguishable from each other and from `ink`, which a straight inversion
+   does not give. */
+:root[data-theme="light"] {
+  --c-bg: #F4F6F9;
+  --c-panel: #FFFFFF;
+  --c-panel-border: #E1E5EC;
+  --c-inset: #F1F3F7;
+  --c-row-open: #F7F9FC;
+  --c-ink: #161A21;
+  --c-ink-dim: #5C6575;
+  --c-ink-faint: #8C95A4;
+  --c-accent: #C2001F;
+  --c-accent-dim: #FBD9DF;
+  --c-positive: #0B8F66;
+  --c-positive-soft: #E4F6EF;
+  --c-negative: #B4660F;
+  --c-warn: #9A6D09;
+  --c-warn-soft: #FDF4E0;
+  --c-danger-soft: #FCEBEA;
+  --c-overlay: rgba(22, 26, 33, 0.45);
+  --c-scrollbar: #C8CEDA;
+  --c-warn-border: rgba(154, 109, 9, 0.33);
+  --c-nav-active: #FBE9EC;
+  --c-head-cell: #F1F3F7;
+  --c-field: #FFFFFF;
+  --c-pinned: #FDF4E0;
+  --c-empty-cell: #F1F3F7;
+}
+
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
-  background: #0F1115;
+  background: var(--c-bg);
   font-family: 'Inter', -apple-system, sans-serif;
 }
+/* So the browser renders form controls and scrollbars to match, instead of
+   leaving a dark dropdown on a light page. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"], :root { color-scheme: dark; }
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: #2A303B; border-radius: 8px; }
+::-webkit-scrollbar-thumb { background: var(--c-scrollbar); border-radius: 8px; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 

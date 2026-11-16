@@ -14,7 +14,7 @@ import { upsertInChunks } from "../lib/importers/parseWorkbook";
 import { AFF_STRINGS } from "../lib/i18nAffiliates";
 
 const inputStyle = {
-  background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 7,
+  background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 7,
   color: C.ink, padding: "7px 10px", fontSize: 12.5,
 };
 const btn = (primary) => ({

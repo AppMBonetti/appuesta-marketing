@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Search, X, UserMinus, ShieldAlert, RotateCcw } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
-import { C } from "../lib/theme";
+import { C, alpha } from "../lib/theme";
 import { downloadCsv } from "../lib/csv";
 import { addDays } from "../lib/period";
 import { useSortedRows } from "../lib/sortRows";
@@ -52,10 +52,10 @@ const WATCH_SORT_COLUMNS = [
 
 // Stage names, colours and health order live in one place now; the VIP tier
 // drill-down shows the same badge.
-const STAGE_MOVE_COLORS = { up: "#3ECB9E", down: "#F2994A", sideways: "#8B93A3" };
+const STAGE_MOVE_COLORS = { up: C.positive, down: C.negative, sideways: C.inkDim };
 
 const WATCH_FLAGS = ["excluded", "internal", "duplicate"];
-const WATCH_COLORS = { excluded: "#E4022B", internal: "#8B93A3", duplicate: "#D9A848" };
+const WATCH_COLORS = { excluded: C.accent, internal: C.inkDim, duplicate: C.warn };
 
 const WATCH_CSV_COLUMNS = [
   { label: "player_id", value: p => fullPlayerId(p.id) },
@@ -425,7 +425,7 @@ export default function Segments({ s, lang }) {
   }, [trend]);
 
   const input = {
-    background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8,
+    background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 8,
     color: C.ink, padding: "7px 10px", fontSize: 12.5,
   };
   const th = { padding: "9px 12px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 11.5, whiteSpace: "nowrap" };
@@ -502,7 +502,7 @@ export default function Segments({ s, lang }) {
               baseline is a reconstructed week it has to say so here, not only
               in the grid below. */}
           {baselineCapture && estimatedOn[baselineCapture] && (
-            <span title={s.seg.history.estimatedHint} style={{ color: "#D9A848", marginLeft: 4 }}>*</span>
+            <span title={s.seg.history.estimatedHint} style={{ color: C.warn, marginLeft: 4 }}>*</span>
           )}
         </span>
       </div>
@@ -666,7 +666,7 @@ export default function Segments({ s, lang }) {
                           -- but nobody should be calling them. */}
                       {p.restricted && (
                         <span title={p.restriction_reason || s.seg.restrictedHint}
-                          style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px" }}>
+                          style={{ color: C.accent, fontSize: 10, border: `1px solid ${alpha(C.accent, 40)}`, borderRadius: 5, padding: "1px 5px" }}>
                           {s.seg.restricted}
                         </span>
                       )}
@@ -675,7 +675,7 @@ export default function Segments({ s, lang }) {
                           this player is a deposit nudge, not a win-back. */}
                       {p.active_on_balance && (
                         <span title={s.seg.onBalanceHint}
-                          style={{ color: C.positive, fontSize: 10, border: `1px solid ${C.positive}55`, borderRadius: 5, padding: "1px 5px" }}>
+                          style={{ color: C.positive, fontSize: 10, border: `1px solid ${alpha(C.positive, 33)}`, borderRadius: 5, padding: "1px 5px" }}>
                           {s.seg.onBalance}
                         </span>
                       )}
@@ -683,7 +683,7 @@ export default function Segments({ s, lang }) {
                         // The segment reflects what the player did; this flags a
                         // reason to contact them anyway — a bet the house just
                         // settled, or one still running.
-                        <span title={s.seg.liveHookHint} style={{ color: "#D9A848", fontSize: 10, border: "1px solid #D9A84855", borderRadius: 5, padding: "1px 5px" }}>
+                        <span title={s.seg.liveHookHint} style={{ color: C.warn, fontSize: 10, border: `1px solid ${C.warnBorder}`, borderRadius: 5, padding: "1px 5px" }}>
                           {s.seg.liveHook}
                         </span>
                       )}
@@ -747,7 +747,7 @@ export default function Segments({ s, lang }) {
                     // a player to Cooling and to Churned.
                     color: p.days_since_deposit == null ? C.inkFaint
                       : p.days_since_deposit >= 30 ? C.negative
-                      : p.days_since_deposit >= 8 ? "#D9A848" : C.inkDim,
+                      : p.days_since_deposit >= 8 ? C.warn : C.inkDim,
                     fontWeight: p.days_since_deposit >= 8 ? 600 : 400,
                   }}>
                     {p.days_since_deposit == null ? "—" : s.seg.daysAgo.replace("{n}", String(p.days_since_deposit))}
@@ -793,7 +793,7 @@ export default function Segments({ s, lang }) {
             <SectionHeading title={s.seg.watch.title} subtitle={s.seg.watch.sub} />
 
             {reentry.length > 0 && (
-              <div style={{ display: "flex", gap: 9, alignItems: "flex-start", background: "#2C1B1A", border: `1px solid ${C.negative}55`, borderRadius: 12, padding: "12px 15px", marginBottom: 16, fontSize: 12.5, color: C.negative }}>
+              <div style={{ display: "flex", gap: 9, alignItems: "flex-start", background: C.dangerSoft, border: `1px solid ${alpha(C.negative, 33)}`, borderRadius: 12, padding: "12px 15px", marginBottom: 16, fontSize: 12.5, color: C.negative }}>
                 <ShieldAlert size={15} style={{ flexShrink: 0, marginTop: 1 }} />
                 <div>
                   {s.seg.watch.reentry.replace("{n}", String(reentry.length))}
@@ -845,7 +845,7 @@ export default function Segments({ s, lang }) {
                         <div style={{ color: C.inkFaint, fontSize: 11 }}>{w.email}</div>
                       </td>
                       <td style={td}>
-                        <span style={{ color: WATCH_COLORS[w.flag], fontSize: 11.5, border: `1px solid ${WATCH_COLORS[w.flag]}55`, borderRadius: 5, padding: "1px 7px" }}>
+                        <span style={{ color: WATCH_COLORS[w.flag], fontSize: 11.5, border: `1px solid ${alpha(WATCH_COLORS[w.flag], 33)}`, borderRadius: 5, padding: "1px 7px" }}>
                           {s.seg.watch.flags[w.flag]}
                         </span>
                       </td>
@@ -905,7 +905,7 @@ export default function Segments({ s, lang }) {
                   <th key={c} style={{ ...th, textAlign: "right" }}>
                     {fmtDay(c, lang).replace(/ \d{4}$/, "")}
                     {estimatedOn[c] && (
-                      <span title={s.seg.history.estimatedHint} style={{ color: "#D9A848", marginLeft: 3 }}>*</span>
+                      <span title={s.seg.history.estimatedHint} style={{ color: C.warn, marginLeft: 3 }}>*</span>
                     )}
                   </th>
                 ))}
@@ -985,7 +985,7 @@ export default function Segments({ s, lang }) {
               })}
               <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
                 {uncertainOn[moveWeek] > 0 && (
-                  <span title={s.seg.history.estimatedHint} style={{ fontSize: 11.5, color: "#D9A848" }}>
+                  <span title={s.seg.history.estimatedHint} style={{ fontSize: 11.5, color: C.warn }}>
                     {s.seg.history.uncertain.replace("{n}", String(uncertainOn[moveWeek]))}
                   </span>
                 )}
@@ -1062,7 +1062,7 @@ export default function Segments({ s, lang }) {
                                   all: "unset", cursor: "pointer", display: "block", width: "100%",
                                   boxSizing: "border-box", padding: "8px 12px", textAlign: "right",
                                   fontVariantNumeric: "tabular-nums",
-                                  background: on ? `${STAGE_MOVE_COLORS[dir]}2A` : "transparent",
+                                  background: on ? `${alpha(STAGE_MOVE_COLORS[dir], 16)}` : "transparent",
                                   color: on ? C.ink : STAGE_MOVE_COLORS[dir],
                                   fontWeight: on ? 700 : 500,
                                   borderRadius: 6,
@@ -1116,7 +1116,7 @@ export default function Segments({ s, lang }) {
                         {m.name || m.username || "—"}
                         {m.restricted && (
                           <span title={m.restriction_reason || s.seg.restrictedHint}
-                            style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
+                            style={{ color: C.accent, fontSize: 10, border: `1px solid ${alpha(C.accent, 40)}`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
                             {s.seg.restricted}
                           </span>
                         )}
@@ -1131,7 +1131,7 @@ export default function Segments({ s, lang }) {
                         {s.seg.lifecycle[m.lifecycle] || m.lifecycle}
                         {m.active_on_balance && (
                           <span title={s.seg.onBalanceHint}
-                            style={{ color: C.positive, fontSize: 10, border: `1px solid ${C.positive}55`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
+                            style={{ color: C.positive, fontSize: 10, border: `1px solid ${alpha(C.positive, 33)}`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
                             {s.seg.onBalance}
                           </span>
                         )}

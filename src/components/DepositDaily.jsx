@@ -113,7 +113,7 @@ export default function DepositDaily({ s, lang, days, methods }) {
                       </td>
                       <td style={{ ...td, color: C.inkDim }}>{Number(m.completed).toLocaleString()}</td>
                       <td style={{ ...td, color: C.inkDim }}>{Number(m.failed).toLocaleString()}</td>
-                      <td style={{ ...td, fontWeight: 600, color: pct == null ? C.inkFaint : pct < 50 ? C.negative : pct < 80 ? "#D9A848" : C.positive }}>
+                      <td style={{ ...td, fontWeight: 600, color: pct == null ? C.inkFaint : pct < 50 ? C.negative : pct < 80 ? C.warn : C.positive }}>
                         {pct == null ? "—" : `${pct.toFixed(0)}%`}
                       </td>
                       <td style={td}>{fmtDOP(m.completed_amount)}</td>
@@ -151,7 +151,7 @@ export default function DepositDaily({ s, lang, days, methods }) {
                       <td style={td}>{Number(d.depositors).toLocaleString()}</td>
                       <td style={{ ...td, color: C.inkDim }}>{fmtDOP(d.avg_deposit)}</td>
                       <td style={{ padding: "8px 12px" }}>
-                        <div style={{ background: "#1D222B", borderRadius: 4, height: 8 }}>
+                        <div style={{ background: C.inset, borderRadius: 4, height: 8 }}>
                           <div style={{ width: `${Math.max((amount / maxAmount) * 100, 1)}%`, height: "100%", borderRadius: 4, background: C.accent }} />
                         </div>
                       </td>
