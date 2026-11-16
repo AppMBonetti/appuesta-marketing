@@ -8,7 +8,8 @@ import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "../components/SortHeader";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
 import RestrictButton from "../components/RestrictButton";
-import { STAGES, STAGE_COLORS } from "../lib/lifecycle";
+import { STAGES, STAGE_COLORS, lifecycleRank } from "../lib/lifecycle";
+
 import { fullPlayerId, playerIdHaystack } from "../lib/playerId";
 import { useSticky } from "../lib/sticky";
 
@@ -116,6 +117,62 @@ const CSV_COLUMNS = [
   { label: "active_on_balance", value: p => (p.active_on_balance ? "yes" : "no") },
 ];
 
+// The movement table carries what the players table carries, because deciding
+// what to do about a move needs what the player holds, not only that they
+// moved. Same column vocabulary, so the two tabs read the same way.
+const MOVE_SORT_COLUMNS = [
+  { key: "id", kind: "text", label: s => s.seg.cols.id, value: m => fullPlayerId(m.player_id) },
+  { key: "player", kind: "text", label: s => s.seg.cols.player, value: m => m.name || m.username || m.email },
+  { key: "from", kind: "text", label: s => s.seg.moves.from, value: m => lifecycleRank(m.prev_lifecycle) },
+  { key: "to", kind: "text", label: s => s.seg.moves.to, value: m => lifecycleRank(m.lifecycle) },
+  { key: "tier", kind: "text", label: s => s.seg.cols.tier, value: m => m.current_vip_tier },
+  { key: "cash", label: s => s.seg.cols.cashBalance, value: m => m.cash_balance },
+  { key: "added", label: s => s.seg.moves.depositsAdded, value: m => m.deposits_added },
+  { key: "deposits", label: s => s.seg.cols.deposits, value: m => m.total_deposits },
+  { key: "depositCount", label: s => s.seg.cols.depositCount, value: m => m.total_deposit_count },
+  { key: "ggr", label: s => s.seg.cols.ggr, value: m => m.ggr },
+  { key: "bets", label: s => s.seg.cols.bets, value: m => m.total_bets },
+  { key: "avgStake", label: s => s.seg.cols.avgStake, value: m => m.avg_stake },
+  { key: "lastDeposit", kind: "date", label: s => s.seg.cols.lastDeposit, value: m => m.last_deposit_date },
+  { key: "lastBet", kind: "date", label: s => s.seg.cols.lastBet, value: m => m.last_bet_date },
+  { key: "lastLogin", kind: "date", label: s => s.seg.cols.lastLogin, value: m => m.last_login_at },
+  { key: "topSport", kind: "text", label: s => s.seg.cols.topSport, value: m => m.top_sport },
+];
+
+const MOVE_CSV_COLUMNS = [
+  { label: "player_id", value: m => fullPlayerId(m.player_id) },
+  { label: "name", value: m => m.name },
+  { label: "username", value: m => m.username },
+  { label: "email", value: m => m.email },
+  { label: "captured_on", value: m => m.captured_on },
+  { label: "previous_capture", value: m => m.prev_captured_on },
+  { label: "stage_before", value: m => m.prev_lifecycle },
+  { label: "stage_after", value: m => m.lifecycle },
+  { label: "direction", value: m => m.direction },
+  { label: "stage_today", value: m => m.current_lifecycle },
+  { label: "vip_tier", value: m => m.current_vip_tier },
+  { label: "active_on_balance", value: m => (m.active_on_balance ? "yes" : "no") },
+  { label: "restricted", value: m => (m.restricted ? "yes" : "no") },
+  { label: "cash_balance_dop", value: m => m.cash_balance },
+  { label: "bonus_balance_dop", value: m => m.bonus_balance },
+  { label: "total_balance_dop", value: m => m.total_balance },
+  { label: "deposited_since_dop", value: m => m.deposits_added },
+  { label: "total_deposit_amount_dop", value: m => m.total_deposits },
+  { label: "total_deposit_count", value: m => m.total_deposit_count },
+  { label: "total_ggr_dop", value: m => m.ggr },
+  { label: "bets", value: m => m.total_bets },
+  { label: "total_stake_dop", value: m => m.total_stake },
+  { label: "avg_bet_dop", value: m => m.avg_stake },
+  { label: "open_bets", value: m => m.open_bets },
+  { label: "top_sport", value: m => m.top_sport },
+  { label: "last_deposit", value: m => m.last_deposit_date },
+  { label: "days_since_deposit", value: m => m.days_since_deposit_now },
+  { label: "last_bet", value: m => m.last_bet_date },
+  { label: "days_since_bet", value: m => m.days_since_bet },
+  { label: "last_login", value: m => m.last_login_at },
+  { label: "days_since_login", value: m => m.days_since_login },
+];
+
 // Login-recency buckets in the order they read as a decay curve, so the filter
 // and the summary row agree rather than sorting alphabetically.
 const LOGIN_BUCKETS = ["0-1 days", "2-7 days", "8-14 days", "15-30 days", "30+ days", "Never logged in"];
@@ -160,6 +217,10 @@ export default function Segments({ s, lang }) {
   // as it stands now, so comparing a period never re-buckets anybody.
   const [compareTo, setCompareTo] = useState("week");
   const [moveFilter, setMoveFilter] = useState("");
+  // One exact transition, as "Cooling>Active". Up and down were not enough:
+  // Cooling -> Active and Registered -> Active are both "up" and mean
+  // completely different things.
+  const [moveTransition, setMoveTransition] = useState("");
 
   // Excluding a player removes them from every total on the dashboard, so it
   // asks for a reason and then reloads rather than hiding the row locally and
@@ -330,9 +391,15 @@ export default function Segments({ s, lang }) {
   // The movers already belong to one capture, because that is how they were
   // fetched. The newest week is the default; the picker below changes it.
   const latestMoves = moves;
-  const shownMoves = moveFilter
-    ? latestMoves.filter(m => m.direction === moveFilter)
-    : latestMoves;
+  const shownMoves = useMemo(() => {
+    if (moveTransition) {
+      const [from, to] = moveTransition.split(">");
+      return latestMoves.filter(m => m.prev_lifecycle === from && m.lifecycle === to);
+    }
+    return moveFilter ? latestMoves.filter(m => m.direction === moveFilter) : latestMoves;
+  }, [latestMoves, moveFilter, moveTransition]);
+  const { sorted: moveSorted, sort: moveSort, toggle: moveToggle } =
+    useSortedRows(shownMoves, MOVE_SORT_COLUMNS);
 
   // Every week except the first has a previous one to be compared against, so
   // the picker lists all but the oldest capture.
@@ -879,15 +946,19 @@ export default function Segments({ s, lang }) {
       )}
 
       {/* Who crossed a line since the previous import, and which way. The
-          counts above say the funnel changed shape; this says who did it, which
-          is what makes the cause findable. */}
+          counts above say the funnel changed shape; this says who did it.
+          "Up" and "down" were not enough to act on: Cooling -> Active and
+          Registered -> Active are both "up" and are two completely different
+          pieces of news, so the matrix below names every transition and the
+          table underneath carries what the players tab carries, because
+          deciding what to do about a move needs what the player holds. */}
       <div style={{ marginBottom: 20 }}>
         <SectionHeading title={s.seg.moves.title} subtitle={s.seg.moves.sub} />
         {latestMoves.length === 0 ? (
           <Panel style={{ padding: "13px 16px", fontSize: 12.5, color: C.inkDim, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <span>{captures.length < 2 ? s.seg.moves.needsTwo : s.seg.moves.none}</span>
             {moveWeeks.length > 1 && (
-              <select value={moveWeek || ""} onChange={e => { setMoveWeek(e.target.value); setMoveFilter(""); }}
+              <select value={moveWeek || ""} onChange={e => { setMoveWeek(e.target.value); setMoveFilter(""); setMoveTransition(""); }}
                 style={{ ...input, padding: "5px 9px", fontSize: 12 }}>
                 {moveWeeks.map(c => (
                   <option key={c} value={c}>
@@ -904,7 +975,7 @@ export default function Segments({ s, lang }) {
                 const n = latestMoves.filter(m => m.direction === dir).length;
                 const on = moveFilter === dir;
                 return (
-                  <button key={dir} onClick={() => setMoveFilter(on ? "" : dir)}
+                  <button key={dir} onClick={() => { setMoveFilter(on ? "" : dir); setMoveTransition(""); }}
                     style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 13px", borderRadius: 9, cursor: "pointer", background: C.panel, border: `1px solid ${on ? STAGE_MOVE_COLORS[dir] : C.panelBorder}`, color: C.ink, fontSize: 12.5 }}>
                     <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_MOVE_COLORS[dir] }} />
                     {s.seg.moves[dir]}
@@ -923,10 +994,8 @@ export default function Segments({ s, lang }) {
                     .replace("{from}", fmtDay(latestMoves[0].prev_captured_on, lang))
                     .replace("{to}", fmtDay(latestMoves[0].captured_on, lang))}
                 </span>
-                {/* Every week, not only the newest: the question is what the
-                    funnel did week by week, which one capture cannot answer. */}
                 {moveWeeks.length > 1 && (
-                  <select value={moveWeek || ""} onChange={e => { setMoveWeek(e.target.value); setMoveFilter(""); }}
+                  <select value={moveWeek || ""} onChange={e => { setMoveWeek(e.target.value); setMoveFilter(""); setMoveTransition(""); }}
                     style={{ ...input, padding: "5px 9px", fontSize: 12 }}>
                     {moveWeeks.map(c => (
                       <option key={c} value={c}>
@@ -938,20 +1007,113 @@ export default function Segments({ s, lang }) {
                 )}
               </span>
             </div>
-            <Panel style={{ padding: 4, overflowX: "auto" }}>
+
+            {/* Every transition that happened, as a grid. Rows are where the
+                player was, columns are where they went, so a row reads "what
+                became of last week's Cooling" and a column reads "where this
+                week's Active came from". Click a cell for just those players. */}
+            <Panel style={{ padding: 4, marginBottom: 12, overflowX: "auto" }}>
+              <div style={{ padding: "10px 12px 4px", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                <strong style={{ fontSize: 13 }}>{s.seg.matrix.title}</strong>
+                <span style={{ fontSize: 11.5, color: C.inkFaint }}>{s.seg.matrix.sub}</span>
+              </div>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
-                    {[s.seg.cols.player, s.seg.moves.from, s.seg.moves.to, s.seg.cols.tier,
-                      s.seg.moves.depositsAdded, s.seg.cols.balance, s.seg.cols.lastDeposit]
-                      .map(h => <th key={h} style={th}>{h}</th>)}
+                    <th style={{ ...th, position: "sticky", left: 0, background: C.panel }}>{s.seg.matrix.from}</th>
+                    {STAGES.map(to => (
+                      <th key={to} style={{ ...th, textAlign: "right" }}>
+                        <span style={{ width: 7, height: 7, borderRadius: 99, background: STAGE_COLORS[to], display: "inline-block", marginRight: 5 }} />
+                        {s.seg.lifecycle[to]}
+                      </th>
+                    ))}
+                    <th style={{ ...th, textAlign: "right" }}>{s.seg.matrix.total}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {shownMoves.map(m => (
+                  {STAGES.map(from => {
+                    const rowMoves = latestMoves.filter(m => m.prev_lifecycle === from);
+                    if (!rowMoves.length) return null;
+                    return (
+                      <tr key={from} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
+                        <td style={{ ...td, position: "sticky", left: 0, background: C.panel }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 99, background: STAGE_COLORS[from], display: "inline-block", marginRight: 7 }} />
+                          {s.seg.lifecycle[from]}
+                        </td>
+                        {STAGES.map(to => {
+                          const cell = rowMoves.filter(m => m.lifecycle === to);
+                          const key = `${from}>${to}`;
+                          const on = moveTransition === key;
+                          if (from === to || cell.length === 0) {
+                            return <td key={to} style={{ ...td, textAlign: "right", color: C.inkFaint }}>·</td>;
+                          }
+                          // Up or down is a property of the pair, so the cell
+                          // can carry the colour and the list below does not
+                          // have to repeat it.
+                          const dir = cell[0].direction;
+                          return (
+                            <td key={to} style={{ ...td, textAlign: "right", padding: 0 }}>
+                              <button
+                                onClick={() => { setMoveTransition(on ? "" : key); setMoveFilter(""); }}
+                                title={s.seg.matrix.cellHint
+                                  .replace("{from}", s.seg.lifecycle[from])
+                                  .replace("{to}", s.seg.lifecycle[to])}
+                                style={{
+                                  all: "unset", cursor: "pointer", display: "block", width: "100%",
+                                  boxSizing: "border-box", padding: "8px 12px", textAlign: "right",
+                                  fontVariantNumeric: "tabular-nums",
+                                  background: on ? `${STAGE_MOVE_COLORS[dir]}2A` : "transparent",
+                                  color: on ? C.ink : STAGE_MOVE_COLORS[dir],
+                                  fontWeight: on ? 700 : 500,
+                                  borderRadius: 6,
+                                }}
+                              >
+                                {cell.length}
+                              </button>
+                            </td>
+                          );
+                        })}
+                        <td style={{ ...td, textAlign: "right", color: C.inkDim, fontVariantNumeric: "tabular-nums" }}>
+                          {rowMoves.length}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Panel>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 9, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12.5, color: C.inkDim }}>
+                {moveTransition && (
+                  <button onClick={() => setMoveTransition("")}
+                    style={{ ...input, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, background: "transparent", color: C.inkDim, padding: "4px 9px", marginRight: 9 }}>
+                    <X size={11} /> {s.seg.lifecycle[moveTransition.split(">")[0]]} → {s.seg.lifecycle[moveTransition.split(">")[1]]}
+                  </button>
+                )}
+                <strong style={{ color: C.ink }}>{shownMoves.length}</strong> {s.seg.matrix.showing}
+              </span>
+              <button onClick={() => downloadCsv(
+                  `appuesta-movimiento-${moveWeek}-${new Date().toISOString().slice(0, 10)}.csv`,
+                  MOVE_CSV_COLUMNS, shownMoves)}
+                disabled={shownMoves.length === 0}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontSize: 12, cursor: shownMoves.length ? "pointer" : "default", opacity: shownMoves.length ? 1 : 0.5 }}>
+                <Download size={13} /> {s.seg.matrix.export}
+              </button>
+            </div>
+
+            <Panel style={{ padding: 4, overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <SortHeader columns={MOVE_SORT_COLUMNS} sort={moveSort} toggle={moveToggle}
+                    s={s} th={th} />
+                </thead>
+                <tbody>
+                  {moveSorted.map(m => (
                     <tr key={`${m.player_id}|${m.captured_on}`} style={{ borderTop: `1px solid ${C.panelBorder}` }}>
+                      <td style={{ ...td, color: C.inkFaint, fontVariantNumeric: "tabular-nums" }}>{fullPlayerId(m.player_id)}</td>
                       <td style={{ ...td, fontWeight: 500 }}>
-                        {m.name || m.username || fullPlayerId(m.player_id)}
+                        {m.name || m.username || "—"}
                         {m.restricted && (
                           <span title={m.restriction_reason || s.seg.restrictedHint}
                             style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
@@ -967,15 +1129,54 @@ export default function Segments({ s, lang }) {
                       <td style={{ ...td, color: STAGE_MOVE_COLORS[m.direction], fontWeight: 500 }}>
                         <span style={{ width: 7, height: 7, borderRadius: 99, background: STAGE_COLORS[m.lifecycle], display: "inline-block", marginRight: 6 }} />
                         {s.seg.lifecycle[m.lifecycle] || m.lifecycle}
+                        {m.active_on_balance && (
+                          <span title={s.seg.onBalanceHint}
+                            style={{ color: C.positive, fontSize: 10, border: `1px solid ${C.positive}55`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
+                            {s.seg.onBalance}
+                          </span>
+                        )}
                       </td>
-                      <td style={{ ...td, color: C.inkDim }}>{m.vip_tier || "—"}</td>
+                      <td style={{ ...td, color: C.inkDim }}>{m.current_vip_tier || "—"}</td>
+                      {/* What they are holding is the first thing that decides
+                          whether the move needs a call or a nudge. */}
+                      <td style={{ ...td, color: Number(m.cash_balance) > 0 ? C.positive : C.inkDim }}>
+                        {m.cash_balance == null ? "—" : fmtDOP(m.cash_balance)}
+                        {Number(m.bonus_balance) > 0 && (
+                          <span style={{ color: C.inkFaint, fontSize: 11, marginLeft: 5 }}>
+                            {s.vipTrack.bonusOf.replace("{amt}", fmtDOP(m.bonus_balance))}
+                          </span>
+                        )}
+                      </td>
                       <td style={td}>
                         {Number(m.deposits_added) > 0 ? fmtDOP(m.deposits_added) : "—"}
                       </td>
-                      <td style={{ ...td, color: Number(m.total_balance) > 0 ? C.positive : C.inkDim }}>
-                        {m.total_balance == null ? "—" : fmtDOP(m.total_balance)}
+                      <td style={td}>{fmtDOP(m.total_deposits)}</td>
+                      <td style={{ ...td, color: C.inkDim }}>{m.total_deposit_count ?? 0}</td>
+                      <td style={{ ...td, color: Number(m.ggr) < 0 ? C.negative : C.ink }}>{fmtDOP(m.ggr)}</td>
+                      <td style={{ ...td, color: C.inkDim }}>{Number(m.total_bets) || 0}</td>
+                      <td style={td}>{m.avg_stake == null ? "—" : fmtDOP(m.avg_stake)}</td>
+                      <td style={{ ...td, color: C.inkDim }}>
+                        {dateOf(m.last_deposit_date)}
+                        {m.days_since_deposit_now != null && (
+                          <span style={{ color: C.inkFaint, fontSize: 11, marginLeft: 5 }}>
+                            {s.seg.daysAgo.replace("{n}", String(m.days_since_deposit_now))}
+                          </span>
+                        )}
                       </td>
-                      <td style={{ ...td, color: C.inkDim }}>{dateOf(m.last_deposit_date)}</td>
+                      <td style={{ ...td, color: C.inkDim }}>
+                        {dateOf(m.last_bet_date)}
+                        {m.days_since_bet != null && (
+                          <span style={{ color: C.inkFaint, fontSize: 11, marginLeft: 5 }}>
+                            {s.seg.daysAgo.replace("{n}", String(m.days_since_bet))}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ ...td, color: C.inkDim }}>{dateOf(m.last_login_at)}</td>
+                      <td style={{ ...td, color: C.inkDim }}>
+                        {m.top_sport
+                          ? <>{m.top_sport}{m.top_sport_share == null ? "" : ` · ${Math.round(Number(m.top_sport_share))}%`}</>
+                          : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

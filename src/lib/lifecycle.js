@@ -16,3 +16,19 @@ export const STAGE_COLORS = {
 // Whether a stage change was an improvement is decided in the database, by
 // lifecycle_rank(), and arrives on player_stage_moves as `direction`. It is not
 // recomputed here: two copies of that order would be two things to keep in step.
+
+/**
+ * Stage ordered by health, mirroring `lifecycle_rank()` in the database —
+ * which is NOT the funnel order STAGES uses. Registered is the floor and
+ * Churned sits just above it, because a churned player has paid once and the
+ * climb back is shorter than a signup's. Used to sort the from/to columns of
+ * the movement table so they read as the same ladder the direction colours do.
+ *
+ * Checked against the database: Registered 0, Churned 1, At risk 2, Cooling 3,
+ * New 4, Active 5.
+ */
+export const LIFECYCLE_RANK = {
+  Registered: 0, Churned: 1, "At risk": 2, Cooling: 3, New: 4, Active: 5,
+};
+
+export const lifecycleRank = stage => LIFECYCLE_RANK[stage] ?? -1;
