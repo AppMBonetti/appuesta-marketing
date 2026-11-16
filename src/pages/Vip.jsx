@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, ChevronDown, Download } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
-import { C } from "../lib/theme";
+import { C, alpha } from "../lib/theme";
 import { SectionHeading, Panel, Spinner, fmtDOP, EmptyState } from "../components/ui";
 import { downloadCsv } from "../lib/csv";
 import { STAGE_COLORS } from "../lib/lifecycle";
@@ -20,7 +20,7 @@ const EMPTY_TIER_FIGURES = {
   tickets: 0, ticket_value: 0, bonus_stake: 0, avg_ticket: null, net_cash: 0, bettors: 0,
 };
 
-const TIER_COLORS = ["#8B93A3", "#B0555F", "#C9424F", "#E4022B", "#F03A57", "#F97A8F"];
+const TIER_COLORS = [C.inkDim, "#B0555F", "#C9424F", C.accent, "#F03A57", "#F97A8F"];
 
 // Raw values, not display-formatted ones: a CRM import wants 295986.87, not
 // "DOP 295,987", and dates in ISO so any system parses them the same way.
@@ -108,7 +108,7 @@ function ProgressToNext({ player, color, s }) {
   const atTop = !player.next_tier;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 220 }}>
-      <div style={{ flex: 1, background: "#1D222B", borderRadius: 6, height: 8, overflow: "hidden" }}>
+      <div style={{ flex: 1, background: C.inset, borderRadius: 6, height: 8, overflow: "hidden" }}>
         <div style={{ width: `${atTop ? 100 : pct}%`, height: "100%", borderRadius: 6, background: atTop ? C.positive : color, transition: "width .2s" }} />
       </div>
       <div style={{ width: 168, fontSize: 11.5, color: C.inkDim, whiteSpace: "nowrap" }}>
@@ -147,7 +147,7 @@ function TierPlayers({ players, tier, s, lang, thStyle, tdStyle, onChanged }) {
     <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 12px 4px" }}>
       <button
         onClick={() => exportPlayers(sorted, tier.tier_name)}
-        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12, cursor: "pointer" }}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: C.inset, color: C.ink, fontSize: 12, cursor: "pointer" }}
       >
         <Download size={12} /> {s.tierDrill.exportTier} ({sorted.length})
       </button>
@@ -170,7 +170,7 @@ function TierPlayers({ players, tier, s, lang, thStyle, tdStyle, onChanged }) {
                     them. */}
                 {p.restricted && (
                   <span title={p.restriction_reason || s.seg.restrictedHint}
-                    style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px" }}>
+                    style={{ color: C.accent, fontSize: 10, border: `1px solid ${alpha(C.accent, 40)}`, borderRadius: 5, padding: "1px 5px" }}>
                     {s.seg.restricted}
                   </span>
                 )}
@@ -421,7 +421,7 @@ export default function Vip({ s, lang }) {
               )}
               <button
                 onClick={() => exportPlayers(visiblePlayers, search ? "busqueda" : "todos")}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5, cursor: "pointer" }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: C.inset, color: C.ink, fontSize: 12.5, cursor: "pointer" }}
               >
                 <Download size={13} /> {s.tierDrill.exportAll} ({visiblePlayers.length})
               </button>
@@ -454,7 +454,7 @@ export default function Vip({ s, lang }) {
                         </div>
                       </div>
                       <div style={{ flex: 1, minWidth: 60, display: "flex", flexDirection: "column", gap: 5 }}>
-                        <div style={{ background: "#1D222B", borderRadius: 8, height: 14 }}>
+                        <div style={{ background: C.inset, borderRadius: 8, height: 14 }}>
                           <div style={{ width: `${(bar / maxBar) * 100}%`, height: "100%", borderRadius: 8, background: t.color, opacity: 0.85 }} />
                         </div>
                         <div style={{ color: C.inkFaint, fontSize: 11 }}>
@@ -514,14 +514,14 @@ export default function Vip({ s, lang }) {
             {scoped && (
               <div style={{ border: `1px solid ${C.panelBorder}`, borderRadius: 12, background: C.panel, padding: "12px 15px", margin: "14px 0 0", maxWidth: 760, display: "flex", flexDirection: "column", gap: 7 }}>
                 {scoped.meta.month_start && !scoped.meta.complete && (
-                  <div style={{ fontSize: 11.5, color: "#D9A848" }}>
+                  <div style={{ fontSize: 11.5, color: C.warn }}>
                     {s.tierPeriod.monthPartial
                       .replace("{from}", fmtShortDay(scoped.meta.covered_from, lang))
                       .replace("{to}", fmtShortDay(scoped.meta.covered_to, lang))}
                   </div>
                 )}
                 {scoped.meta.straddles_month && (
-                  <div style={{ fontSize: 11.5, color: "#D9A848" }}>{s.tierPeriod.straddles}</div>
+                  <div style={{ fontSize: 11.5, color: C.warn }}>{s.tierPeriod.straddles}</div>
                 )}
                 <div style={{ fontSize: 11.5, color: C.inkDim }}>{s.tierPeriod.tierIsToday}</div>
                 <div style={{ fontSize: 11.5, color: C.inkDim }}>{s.tierPeriod.drillIsWholeTier}</div>

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { X, Download } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { fullPlayerId } from "../lib/playerId";
-import { C } from "../lib/theme";
+import { C, alpha } from "../lib/theme";
 import { addDays, formatWeek } from "../lib/period";
 import { downloadCsv } from "../lib/csv";
 import { Spinner, fmtDOP } from "./ui";
@@ -91,7 +91,7 @@ export default function PlayerDrill({ s, lang, metric, week, onClose }) {
   return (
     <div
       onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(8,10,14,0.72)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+      style={{ position: "fixed", inset: 0, background: C.overlay, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
     >
       <div
         onClick={e => e.stopPropagation()}
@@ -108,7 +108,7 @@ export default function PlayerDrill({ s, lang, metric, week, onClose }) {
             {rows.length > 0 && (
               <button
                 onClick={() => downloadCsv(`appuesta-${metric}-${week}.csv`, CSV_COLUMNS, sorted)}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5, cursor: "pointer" }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: C.inset, color: C.ink, fontSize: 12.5, cursor: "pointer" }}
               ><Download size={13} /> {s.drill.export}</button>
             )}
             <button onClick={onClose} aria-label={s.drill.close}
@@ -139,7 +139,7 @@ export default function PlayerDrill({ s, lang, metric, week, onClose }) {
                             a decision to revisit. */}
                         {p.restricted && (
                           <span title={p.restriction_reason || s.seg.restrictedHint}
-                            style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
+                            style={{ color: C.accent, fontSize: 10, border: `1px solid ${alpha(C.accent, 40)}`, borderRadius: 5, padding: "1px 5px", marginLeft: 6 }}>
                             {s.seg.restricted}
                           </span>
                         )}

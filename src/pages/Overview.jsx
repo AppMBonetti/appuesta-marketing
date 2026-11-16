@@ -325,7 +325,7 @@ export default function Overview({ s, lang }) {
       {depositsUntrusted && (
         // Deposit-derived tiles read "—" on purpose. Without saying why, a blank
         // looks like a loading failure and someone goes hunting for a bug.
-        <div style={{ background: "#2A2216", border: "1px solid #D9A84855", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#D9A848", marginBottom: 16, lineHeight: 1.5 }}>
+        <div style={{ background: C.warnSoft, border: `1px solid ${C.warnBorder}`, borderRadius: 10, padding: "10px 14px", fontSize: 12, color: C.warn, marginBottom: 16, lineHeight: 1.5 }}>
           {s.ov.depositsUntrusted}
         </div>
       )}
@@ -343,8 +343,8 @@ export default function Overview({ s, lang }) {
       </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 26 }}>
-        <SparkTile {...tile("costPerRegistration", s.wk.rows.costPerRegistration, fmtMoney2, "down", "#D9A848")} />
-        <SparkTile {...tile("costPerAcquisition", s.wk.rows.costPerAcquisition, fmtMoney2, "down", "#D9A848")} />
+        <SparkTile {...tile("costPerRegistration", s.wk.rows.costPerRegistration, fmtMoney2, "down", C.warn)} />
+        <SparkTile {...tile("costPerAcquisition", s.wk.rows.costPerAcquisition, fmtMoney2, "down", C.warn)} />
         <SparkTile {...tile("roasGgr", s.wk.rows.roasGgr, fmtX, "up", C.positive)} />
         <SparkTile {...tile("registrationToDeposit", s.wk.rows.registrationToDeposit, fmtPct, "up", "#B073F0")} />
       </div>
@@ -373,7 +373,7 @@ export default function Overview({ s, lang }) {
             <YAxis {...axis} width={64} />
             <Tooltip {...tooltip} formatter={v => fmtMoney2(v)} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Line type="monotone" dataKey="cpl" name={s.ov.legendCpl} stroke="#D9A848" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+            <Line type="monotone" dataKey="cpl" name={s.ov.legendCpl} stroke={C.warn} strokeWidth={2} dot={{ r: 3 }} connectNulls />
             <Line type="monotone" dataKey="cpa" name={s.ov.legendCpa} stroke={C.accent} strokeWidth={2} dot={{ r: 3 }} connectNulls />
           </LineChart>
         </ResponsiveContainer>

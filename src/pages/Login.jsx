@@ -55,7 +55,7 @@ export default function Login({ s, lang, setLang }) {
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     placeholder={s.emailPlaceholder}
-                    style={{ width: "100%", background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 9, color: C.ink, padding: "10px 12px 10px 34px", fontSize: 13.5 }}
+                    style={{ width: "100%", background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 9, color: C.ink, padding: "10px 12px 10px 34px", fontSize: 13.5 }}
                   />
                 </div>
                 {(state === "error" || state === "refused" || state === "limited") && (

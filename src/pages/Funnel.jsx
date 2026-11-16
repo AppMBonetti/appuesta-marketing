@@ -5,7 +5,7 @@ import {
 import { Wallet, TrendingUp, Coins, Users, Percent, PiggyBank, ArrowLeftRight } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { fullPlayerId } from "../lib/playerId";
-import { C } from "../lib/theme";
+import { C, alpha } from "../lib/theme";
 import { dataAnchoredRange, dayStartUTC, dayAfterUTC, dateRangeLabel, formatWeek } from "../lib/period";
 import { SectionHeading, Panel, KpiCard, Spinner, fmtDOP, deltaOf, EmptyState } from "../components/ui";
 import { useSortedRows } from "../lib/sortRows";
@@ -69,8 +69,8 @@ function WeeklyBarChart({ data, lang, color, money = true }) {
 
 function InfoNote({ children, tone = "neutral" }) {
   const palette = tone === "warn"
-    ? { bg: "#2C1B1A", border: `${C.negative}40`, color: C.negative }
-    : { bg: "#161A21", border: C.panelBorder, color: C.inkDim };
+    ? { bg: C.dangerSoft, border: `${alpha(C.negative, 25)}`, color: C.negative }
+    : { bg: C.panel, border: C.panelBorder, color: C.inkDim };
   return (
     <div style={{ background: palette.bg, border: `1px solid ${palette.border}`, borderRadius: 12, padding: "12px 16px", fontSize: 12.5, color: palette.color, marginBottom: 20 }}>
       {children}
@@ -387,7 +387,7 @@ export default function Funnel({ s, lang }) {
                 </span>
               )}
               {data.clamped && (
-                <span style={{ color: "#D9A848" }}>{s.ov.clampedToData}</span>
+                <span style={{ color: C.warn }}>{s.ov.clampedToData}</span>
               )}
             </div>
           )}
@@ -428,7 +428,7 @@ export default function Funnel({ s, lang }) {
                 return (
                   <div key={f.key} style={{ background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 12, padding: "14px 18px", display: "flex", alignItems: "center", gap: 16 }}>
                     <div style={{ width: 120, fontSize: 13, color: C.inkDim }}>{lang === "es" ? f.stageEs : f.stageEn}</div>
-                    <div style={{ flex: 1, background: "#1D222B", borderRadius: 8, height: 26 }}><div style={{ width: `${p}%`, height: "100%", borderRadius: 8, background: `linear-gradient(90deg, ${C.accent}, ${C.accentDim})` }} /></div>
+                    <div style={{ flex: 1, background: C.inset, borderRadius: 8, height: 26 }}><div style={{ width: `${p}%`, height: "100%", borderRadius: 8, background: `linear-gradient(90deg, ${C.accent}, ${C.accentDim})` }} /></div>
                     <div style={{ width: 80, textAlign: "right", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600 }}>{val.toLocaleString()}</div>
                     <div style={{ width: 40, textAlign: "right", color: C.inkFaint, fontSize: 12.5 }}>{p}%</div>
                     <div style={{ width: 60, textAlign: "right", fontSize: 11.5, color: d?.positive ? C.positive : C.negative }}>{d?.label ?? "—"}</div>

@@ -27,10 +27,10 @@ function cellStyle(pct, mature, partial) {
         border: `1px dashed ${C.panelBorder}`,
       };
     }
-    return { background: "#171B22", color: C.inkFaint, border: `1px dashed ${C.panelBorder}` };
+    return { background: C.emptyCell, color: C.inkFaint, border: `1px dashed ${C.panelBorder}` };
   }
   const value = Number(pct) || 0;
-  if (value === 0) return { background: "#161A21", color: C.inkFaint, border: `1px solid ${C.panelBorder}` };
+  if (value === 0) return { background: C.panel, color: C.inkFaint, border: `1px solid ${C.panelBorder}` };
   // 0-100% mapped onto the accent, floored so a low-but-real value stays visible.
   const alpha = 0.14 + Math.min(value, 100) / 100 * 0.66;
   return {
@@ -168,7 +168,7 @@ export default function Retention({ s, lang }) {
           {view === "total" && (
             <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2 }}>
               {["period", "month"].map(g => (
-                <button key={g} onClick={() => setGranularity(g)} style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: granularity === g ? "#2A303B" : "transparent", color: granularity === g ? C.ink : C.inkDim }}>{s.granToggle[g]}</button>
+                <button key={g} onClick={() => setGranularity(g)} style={{ padding: "6px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: granularity === g ? C.panelBorder : "transparent", color: granularity === g ? C.ink : C.inkDim }}>{s.granToggle[g]}</button>
               ))}
             </div>
           )}
@@ -240,7 +240,7 @@ export default function Retention({ s, lang }) {
                       <td style={{ padding: "10px 16px", color: C.inkDim }}>{row.players}</td>
                       <td style={{ padding: "10px 16px" }}>
                         <span style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 320 }}>
-                          <span style={{ flex: 1, background: "#1D222B", borderRadius: 6, height: 8 }}>
+                          <span style={{ flex: 1, background: C.inset, borderRadius: 6, height: 8 }}>
                             <span style={{ display: "block", width: `${Number(row.pct) || 0}%`, height: "100%", borderRadius: 6, background: C.accent }} />
                           </span>
                           <strong>{row.pct == null ? "—" : `${Number(row.pct).toFixed(0)}%`}</strong>

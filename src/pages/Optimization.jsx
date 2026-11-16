@@ -53,7 +53,7 @@ export default function Optimization({ s, lang }) {
     <>
       <SectionHeading title={s.optTitle} subtitle={s.optSub} />
       <Panel style={{ marginBottom: 18 }}>
-        <textarea value={noteDraft} onChange={e => setNoteDraft(e.target.value)} placeholder={s.optPlaceholder} style={{ width: "100%", minHeight: 70, background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 9, color: C.ink, padding: 12, fontSize: 13, resize: "vertical", fontFamily: "inherit" }} />
+        <textarea value={noteDraft} onChange={e => setNoteDraft(e.target.value)} placeholder={s.optPlaceholder} style={{ width: "100%", minHeight: 70, background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 9, color: C.ink, padding: 12, fontSize: 13, resize: "vertical", fontFamily: "inherit" }} />
         <button onClick={addNote} disabled={submitting} style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontSize: 13, fontWeight: 500, cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.7 : 1 }}>
           {submitting ? <Spinner /> : <Plus size={14} />} {s.optAdd}
         </button>
@@ -69,7 +69,7 @@ export default function Optimization({ s, lang }) {
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, alignItems: "center" }}>
                 <span style={{ fontSize: 12, color: C.inkFaint }}>{new Date(n.note_date).toLocaleDateString(lang === "es" ? "es-DO" : "en-US", { day: "numeric", month: "short", year: "numeric" })}</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <button onClick={() => cycleStatus(n)} style={{ border: "none", cursor: "pointer", fontSize: 11, padding: "2px 9px", borderRadius: 6, background: n.status === "working" ? C.positiveSoft : n.status === "notWorking" ? "#2C1B1A" : "#241A0E", color: n.status === "working" ? C.positive : n.status === "notWorking" ? C.negative : "#D9A848" }}>{s.optStatus[n.status]}</button>
+                  <button onClick={() => cycleStatus(n)} style={{ border: "none", cursor: "pointer", fontSize: 11, padding: "2px 9px", borderRadius: 6, background: n.status === "working" ? C.positiveSoft : n.status === "notWorking" ? C.dangerSoft : C.warnSoft, color: n.status === "working" ? C.positive : n.status === "notWorking" ? C.negative : C.warn }}>{s.optStatus[n.status]}</button>
                   <button onClick={() => { if (window.confirm(s.confirmDeleteNote)) removeNote(n.id); }} style={{ border: "none", background: "transparent", cursor: "pointer", color: C.inkFaint, display: "flex" }}><Trash2 size={13} /></button>
                 </div>
               </div>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Pin, PinOff, Trash2, Plus } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../lib/AuthContext";
-import { C } from "../lib/theme";
+import { C, alpha } from "../lib/theme";
 import { Spinner } from "./ui";
 
 /**
@@ -22,10 +22,10 @@ import { Spinner } from "./ui";
 export const NOTE_KINDS = ["note", "outreach", "reply", "no_reply"];
 
 const KIND_COLORS = {
-  note: "#8B93A3",
+  note: C.inkDim,
   outreach: "#6E9BF2",
-  reply: "#3ECB9E",
-  no_reply: "#D9A848",
+  reply: C.positive,
+  no_reply: C.warn,
 };
 
 const CHANNELS = ["whatsapp", "email", "phone", "telegram", "in_person", "other"];
@@ -72,7 +72,7 @@ function Chip({ label, color }) {
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 5, padding: "1px 7px", borderRadius: 99,
-      background: `${color}1F`, color, fontSize: 10.5, fontWeight: 600, whiteSpace: "nowrap",
+      background: `${alpha(color, 12)}`, color, fontSize: 10.5, fontWeight: 600, whiteSpace: "nowrap",
     }}>
       {label}
     </span>
@@ -142,12 +142,12 @@ export default function PlayerNotes({ playerId, notes, s, lang, onChanged }) {
 
   const list = notes || [];
   const input = {
-    background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 7,
+    background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 7,
     color: C.ink, padding: "6px 8px", fontSize: 12,
   };
   const ghost = {
     display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7,
-    border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 11.5, cursor: "pointer",
+    border: `1px solid ${C.panelBorder}`, background: C.inset, color: C.ink, fontSize: 11.5, cursor: "pointer",
   };
 
   return (
@@ -171,7 +171,7 @@ export default function PlayerNotes({ playerId, notes, s, lang, onChanged }) {
       {adding && (
         <div style={{
           marginTop: 10, padding: 12, borderRadius: 9,
-          border: `1px solid ${C.panelBorder}`, background: "#141820",
+          border: `1px solid ${C.panelBorder}`, background: C.field,
         }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             {NOTE_KINDS.map(k => (
@@ -179,7 +179,7 @@ export default function PlayerNotes({ playerId, notes, s, lang, onChanged }) {
                 style={{
                   padding: "4px 10px", borderRadius: 99, fontSize: 11.5, cursor: "pointer",
                   border: `1px solid ${kind === k ? KIND_COLORS[k] : C.panelBorder}`,
-                  background: kind === k ? `${KIND_COLORS[k]}1F` : "transparent",
+                  background: kind === k ? `${alpha(KIND_COLORS[k], 12)}` : "transparent",
                   color: kind === k ? KIND_COLORS[k] : C.inkDim,
                 }}>
                 {n.kinds[k]}
@@ -214,7 +214,7 @@ export default function PlayerNotes({ playerId, notes, s, lang, onChanged }) {
             <button onClick={reset} style={ghost}>{n.cancel}</button>
             <button onClick={add} disabled={busy || !body.trim()}
               style={{
-                ...ghost, background: body.trim() ? C.accent : "#1D222B",
+                ...ghost, background: body.trim() ? C.accent : C.inset,
                 borderColor: body.trim() ? C.accent : C.panelBorder,
                 color: body.trim() ? "#fff" : C.inkFaint,
                 cursor: body.trim() ? "pointer" : "default",
@@ -233,8 +233,8 @@ export default function PlayerNotes({ playerId, notes, s, lang, onChanged }) {
               <div key={row.id}
                 style={{
                   display: "flex", gap: 10, padding: "9px 10px", borderRadius: 8,
-                  background: row.pinned ? "#231D14" : "transparent",
-                  border: `1px solid ${row.pinned ? "#D9A84844" : "transparent"}`,
+                  background: row.pinned ? C.pinned : "transparent",
+                  border: `1px solid ${row.pinned ? C.warnBorder : "transparent"}`,
                 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -246,7 +246,7 @@ export default function PlayerNotes({ playerId, notes, s, lang, onChanged }) {
                       {fmtDay(row.happened_on, lang)}
                       {ago != null && ago > 0 && ` · ${s.seg.daysAgo.replace("{n}", String(ago))}`}
                     </span>
-                    {row.pinned && <Pin size={11} color="#D9A848" />}
+                    {row.pinned && <Pin size={11} color={C.warn} />}
                   </div>
                   <div style={{ fontSize: 12.5, color: C.ink, marginTop: 4, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
                     {row.body}

@@ -119,7 +119,7 @@ export default function Settings({ s, lang }) {
   }
 
   const actuals = actualsFor(month, weeklyRows);
-  const input = { background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "8px 10px", width: 150, fontSize: 13 };
+  const input = { background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "8px 10px", width: 150, fontSize: 13 };
   const th = { padding: "11px 16px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 12 };
   const td = { padding: "9px 16px", fontSize: 13 };
 
@@ -156,7 +156,7 @@ export default function Settings({ s, lang }) {
           <td style={td}>
             {att == null ? <span style={{ color: C.inkFaint }}>—</span> : (
               <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 150 }}>
-                <span style={{ flex: 1, background: "#1D222B", borderRadius: 6, height: 7, minWidth: 60 }}>
+                <span style={{ flex: 1, background: C.inset, borderRadius: 6, height: 7, minWidth: 60 }}>
                   <span style={{ display: "block", width: `${Math.min(att.pct, 100)}%`, height: "100%", borderRadius: 6, background: att.good ? C.positive : C.negative }} />
                 </span>
                 <span style={{ color: att.good ? C.positive : C.negative, fontSize: 12 }}>{att.pct.toFixed(0)}%</span>
@@ -178,7 +178,7 @@ export default function Settings({ s, lang }) {
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
         <span style={{ fontSize: 12.5, color: C.inkDim }}>{s.cfg.month}</span>
         <select value={month} onChange={e => setMonth(e.target.value)}
-          style={{ background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "7px 10px", fontSize: 12.5, textTransform: "capitalize" }}>
+          style={{ background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "7px 10px", fontSize: 12.5, textTransform: "capitalize" }}>
           {monthOptions().map(m => <option key={m} value={m}>{formatMonth(m, lang)}</option>)}
         </select>
       </div>
@@ -216,7 +216,7 @@ export default function Settings({ s, lang }) {
               <input
                 id="min-deposit" inputMode="decimal" value={minDeposit}
                 onChange={e => setMinDeposit(e.target.value)}
-                style={{ width: 140, background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "7px 10px", fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}
+                style={{ width: 140, background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "7px 10px", fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}
               />
             </div>
             <button onClick={saveMinDeposit} disabled={minDepositSaving}

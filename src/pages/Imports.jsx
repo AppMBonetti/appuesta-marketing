@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { UploadCloud, CheckCircle2, FileSpreadsheet, AlertCircle } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
-import { C } from "../lib/theme";
+import { C, alpha } from "../lib/theme";
 import { SectionHeading, Panel, Spinner, fmtDOP } from "../components/ui";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "../components/SortHeader";
@@ -540,7 +540,7 @@ export default function Imports({ s, lang }) {
                     value={sourceTz}
                     disabled={busy}
                     onChange={e => setSourceTz(e.target.value)}
-                    style={{ width: "100%", padding: "7px 9px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5 }}
+                    style={{ width: "100%", padding: "7px 9px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: C.inset, color: C.ink, fontSize: 12.5 }}
                   >
                     {IMPORT_TIMEZONES.map(tz => (
                       <option key={tz.value} value={tz.value}>{tz.label}</option>
@@ -560,7 +560,7 @@ export default function Imports({ s, lang }) {
               <button
                 onClick={() => fileInputs.current[card.source]?.click()}
                 disabled={busy}
-                style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5, fontWeight: 500, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: C.inset, color: C.ink, fontSize: 12.5, fontWeight: 500, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}
               >
                 {busy ? <Spinner /> : <UploadCloud size={14} />} {busy ? phaseLabel(state.phase) : s.uploadBtn}
               </button>
@@ -707,7 +707,7 @@ export default function Imports({ s, lang }) {
         })}
       </div>
 
-      <div style={{ background: "#132A24", border: `1px solid ${C.positive}30`, borderRadius: 12, padding: "10px 16px", fontSize: 12, color: C.positive, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ background: C.positiveSoft, border: `1px solid ${alpha(C.positive, 19)}`, borderRadius: 12, padding: "10px 16px", fontSize: 12, color: C.positive, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
         <CheckCircle2 size={14} /> {s.cadenceNote}
       </div>
 

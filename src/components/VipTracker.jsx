@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, ChevronRight, ChevronDown, Mail, Pin, MessageSquare } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
-import { C } from "../lib/theme";
+import { C, alpha } from "../lib/theme";
 import { downloadCsv } from "../lib/csv";
 import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "./SortHeader";
@@ -115,8 +115,8 @@ function Chip({ label, color, subtle }) {
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 8px", borderRadius: 99,
-      background: subtle ? "transparent" : `${color}1F`, color,
-      border: subtle ? `1px solid ${color}55` : "none",
+      background: subtle ? "transparent" : `${alpha(color, 12)}`, color,
+      border: subtle ? `1px solid ${alpha(color, 33)}` : "none",
       fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap",
     }}>
       {!subtle && <span style={{ width: 6, height: 6, borderRadius: 99, background: color }} />}
@@ -318,7 +318,7 @@ export default function VipTracker({ s, lang, tiers, progress, onChanged }) {
         <Tile label={s.vipTrack.kpi.attention} value={attention.length.toLocaleString()}
           tone={attention.length ? C.negative : C.positive} note={s.vipTrack.kpi.attentionNote} />
         <Tile label={s.vipTrack.kpi.dropping} value={dropping.length.toLocaleString()}
-          tone={dropping.length ? "#D9A848" : C.positive} note={s.vipTrack.kpi.droppingNote} />
+          tone={dropping.length ? C.warn : C.positive} note={s.vipTrack.kpi.droppingNote} />
         <Tile label={s.vipTrack.kpi.net} value={fmtDOP(groupNet)}
           tone={groupNet < 0 ? C.negative : C.ink}
           note={negativeNet.length ? s.vipTrack.kpi.negativeNet.replace("{n}", String(negativeNet.length)) : s.vipTrack.kpi.netNote} />
@@ -340,7 +340,7 @@ export default function VipTracker({ s, lang, tiers, progress, onChanged }) {
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 7,
                   padding: "7px 13px", borderRadius: 9, cursor: "pointer",
-                  background: on ? `${color}1F` : C.panel,
+                  background: on ? `${alpha(color, 12)}` : C.panel,
                   border: `1px solid ${on ? color : C.panelBorder}`,
                   color: C.ink, fontSize: 12.5, fontWeight: on ? 600 : 400,
                 }}>
@@ -372,7 +372,7 @@ export default function VipTracker({ s, lang, tiers, progress, onChanged }) {
         </div>
         <button
           onClick={() => downloadCsv(`appuesta-vip-${new Date().toISOString().slice(0, 10)}.csv`, CSV_COLUMNS, shown)}
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12, cursor: "pointer" }}>
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.panelBorder}`, background: C.inset, color: C.ink, fontSize: 12, cursor: "pointer" }}>
           <Download size={13} /> {s.vipTrack.export}
         </button>
       </div>
@@ -424,7 +424,7 @@ function Row({ p, s, lang, td, num, isOpen, onToggle, onNotesChanged, onChanged,
   return (
     <>
       <tr onClick={onToggle}
-        style={{ borderTop: `1px solid ${C.panelBorder}`, cursor: "pointer", background: isOpen ? "#1A1F28" : "transparent" }}>
+        style={{ borderTop: `1px solid ${C.panelBorder}`, cursor: "pointer", background: isOpen ? C.rowOpen : "transparent" }}>
         <td style={td}><Chip label={p.vip_tier} color={p.tierColor} /></td>
         <td style={{ ...td, fontWeight: 500, maxWidth: 230 }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -433,12 +433,12 @@ function Row({ p, s, lang, td, num, isOpen, onToggle, onNotesChanged, onChanged,
             {/* Counts in every figure, must not be contacted. */}
             {p.restricted && (
               <span title={p.restriction_reason || s.seg.restrictedHint}
-                style={{ color: C.accent, fontSize: 10, border: `1px solid ${C.accent}66`, borderRadius: 5, padding: "1px 5px" }}>
+                style={{ color: C.accent, fontSize: 10, border: `1px solid ${alpha(C.accent, 40)}`, borderRadius: 5, padding: "1px 5px" }}>
                 {s.seg.restricted}
               </span>
             )}
             {p.has_live_hook && (
-              <span title={s.seg.liveHookHint} style={{ color: "#D9A848", fontSize: 10.5 }}>{s.seg.liveHook}</span>
+              <span title={s.seg.liveHookHint} style={{ color: C.warn, fontSize: 10.5 }}>{s.seg.liveHook}</span>
             )}
             {p.notes.length > 0 && !p.pinned && (
               <span title={countLabel(p.notes.length, s.vipTrack.notes)}
@@ -457,7 +457,7 @@ function Row({ p, s, lang, td, num, isOpen, onToggle, onNotesChanged, onChanged,
             <div title={p.pinned.body}
               style={{
                 display: "flex", alignItems: "center", gap: 4, marginLeft: 19, marginTop: 3,
-                fontSize: 11, color: "#D9A848", maxWidth: 210,
+                fontSize: 11, color: C.warn, maxWidth: 210,
               }}>
               <Pin size={10} style={{ flexShrink: 0 }} />
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -498,7 +498,7 @@ function Row({ p, s, lang, td, num, isOpen, onToggle, onNotesChanged, onChanged,
               </>
             : <span style={{ color: C.inkFaint }}>—</span>}
         </td>
-        <td style={{ ...td, ...num, color: p.thinCushion ? "#D9A848" : C.inkDim }}>
+        <td style={{ ...td, ...num, color: p.thinCushion ? C.warn : C.inkDim }}>
           {p.cushion == null ? "—" : fmtDOP(p.cushion)}
           <div style={{ fontSize: 11, color: C.inkFaint }}>{s.vipTrack.floorShort} {fmtDOP(p.tierFloor)}</div>
         </td>
@@ -510,7 +510,7 @@ function Row({ p, s, lang, td, num, isOpen, onToggle, onNotesChanged, onChanged,
         </td>
       </tr>
       {isOpen && (
-        <tr style={{ background: "#1A1F28" }}>
+        <tr style={{ background: C.rowOpen }}>
           <td colSpan={colCount} style={{ padding: "4px 12px 18px 31px" }}>
             <Detail p={p} s={s} lang={lang} onNotesChanged={onNotesChanged} />
           </td>
@@ -593,7 +593,7 @@ function Detail({ p, s, lang, onNotesChanged }) {
             {p.sports.map(sp => (
               <div key={sp.sport} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12 }}>
                 <span style={{ width: 130, color: C.ink }}>{sp.sport}</span>
-                <span style={{ flex: 1, background: "#242933", borderRadius: 6, height: 7 }}>
+                <span style={{ flex: 1, background: C.panelBorder, borderRadius: 6, height: 7 }}>
                   <span style={{ display: "block", width: `${Math.min(Number(sp.share_pct), 100)}%`, height: "100%", borderRadius: 6, background: C.accent }} />
                 </span>
                 <span style={{ width: 46, textAlign: "right", color: C.inkDim, fontVariantNumeric: "tabular-nums" }}>

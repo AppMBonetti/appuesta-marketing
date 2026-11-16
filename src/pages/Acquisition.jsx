@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import { Users, MousePointerClick, Activity, Target, Share2, Eye, UserPlus } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
-import { C, LINE_COLORS } from "../lib/theme";
+import { C, LINE_COLORS, alpha } from "../lib/theme";
 import {
   getPeriodRange, monthOptions, currentBudgetMonth, formatMonth,
   weeksInMonth, previousWeek, weekStartOf,
@@ -171,7 +171,7 @@ export default function Acquisition({ s, lang }) {
           <SectionHeading title={s.wk.title} subtitle={s.wk.sub} />
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
             <select value={month} onChange={e => setMonth(e.target.value)}
-              style={{ background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "7px 10px", fontSize: 12.5, textTransform: "capitalize" }}>
+              style={{ background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 8, color: C.ink, padding: "7px 10px", fontSize: 12.5, textTransform: "capitalize" }}>
               {monthOptions().map(m => <option key={m} value={m}>{formatMonth(m, lang)}</option>)}
             </select>
             <span style={{ fontSize: 12.5, color: C.inkDim }}>
@@ -273,7 +273,7 @@ export default function Acquisition({ s, lang }) {
                         <td style={{ padding: "10px 16px", fontWeight: 600 }}>{c.sessions.toLocaleString()}</td>
                         <td style={{ padding: "10px 16px", color: C.inkDim, minWidth: 130 }}>
                           <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ flex: 1, background: "#1D222B", borderRadius: 6, height: 7, minWidth: 50 }}>
+                            <span style={{ flex: 1, background: C.inset, borderRadius: 6, height: 7, minWidth: 50 }}>
                               <span style={{ display: "block", width: `${c.share}%`, height: "100%", borderRadius: 6, background: c.color }} />
                             </span>
                             {c.share.toFixed(1)}%
@@ -291,7 +291,7 @@ export default function Acquisition({ s, lang }) {
               </Panel>
             </>
           )}
-          <div style={{ background: "#2C1B1A", border: `1px solid ${C.negative}40`, borderRadius: 12, padding: "12px 16px", fontSize: 12.5, color: C.negative, marginBottom: 26 }}>{s.acqNote}</div>
+          <div style={{ background: C.dangerSoft, border: `1px solid ${alpha(C.negative, 25)}`, borderRadius: 12, padding: "12px 16px", fontSize: 12.5, color: C.negative, marginBottom: 26 }}>{s.acqNote}</div>
 
           <SectionHeading title={s.social.title} subtitle={s.social.sub} />
           {social.length === 0 ? (

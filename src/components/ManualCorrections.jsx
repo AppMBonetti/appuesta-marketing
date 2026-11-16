@@ -96,7 +96,7 @@ export default function ManualCorrections({ s, lang }) {
   }
 
   const th = { padding: "9px 10px", textAlign: "left", color: C.inkDim, fontWeight: 500, fontSize: 11, whiteSpace: "nowrap" };
-  const input = { width: "100%", minWidth: 74, background: "#1D222B", border: `1px solid ${C.panelBorder}`, borderRadius: 7, color: C.ink, padding: "6px 8px", fontSize: 12, fontVariantNumeric: "tabular-nums" };
+  const input = { width: "100%", minWidth: 74, background: C.inset, border: `1px solid ${C.panelBorder}`, borderRadius: 7, color: C.ink, padding: "6px 8px", fontSize: 12, fontVariantNumeric: "tabular-nums" };
 
   if (loading) return <Panel style={{ marginBottom: 22 }}><Spinner size={18} /></Panel>;
 
@@ -170,7 +170,7 @@ export default function ManualCorrections({ s, lang }) {
 
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
         <button onClick={addRow}
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 15px", borderRadius: 9, border: `1px solid ${C.panelBorder}`, background: "#1D222B", color: C.ink, fontSize: 12.5, cursor: "pointer" }}>
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 15px", borderRadius: 9, border: `1px solid ${C.panelBorder}`, background: C.inset, color: C.ink, fontSize: 12.5, cursor: "pointer" }}>
           <Plus size={14} /> {s.manual.add}
         </button>
         <button onClick={save} disabled={saving || !rows.length}
