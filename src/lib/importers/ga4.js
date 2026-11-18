@@ -3,8 +3,8 @@ import { parseXlsxFile, toISODateOnly, toNumber, toText } from "./parseWorkbook.
 // Normalized headers from a GA4 traffic export -> the columns of the two tables
 // this file feeds. normalizeHeader() collapses camelCase, so the API field ids
 // ("sessionDefaultChannelGrouping", "sessionSourceMedium") and the display
-// names the GA4 interface and Supermetrics use by default ("Session default
-// channel grouping", "Session source / medium") both land on the same key.
+// names the GA4 interface uses ("Session default channel grouping", "Session
+// source / medium") both land on the same key.
 //
 // Two dimensions, two destinations:
 //
