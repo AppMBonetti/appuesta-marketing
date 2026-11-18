@@ -1020,3 +1020,62 @@ against — the ones in Drive are from 2025 and the live connection is dead. The
 importer was checked against two CSVs built to match the interface and
 Supermetrics shapes, not against a file Google produced. Marcos's first upload is
 the real test, and if a header misses, the error will name it.
+
+## GA4 is connected to Google directly now, and it cost nothing
+
+The section above says the Supermetrics trial expired and that closing the gap
+was Marcos's call. He chose the API, did the Google side, and it is live.
+
+- A service account (`ga4-dashboard@…iam.gserviceaccount.com`) with the
+  **Google Analytics Data API** enabled, added as a **Viewer** on property
+  **545967787 (Appuesta RD)**. No Google Cloud IAM role, no billing — the Data
+  API has a free quota and the service account's rights come from GA4, not from
+  the Cloud project.
+- `supabase/functions/ga4-sync` signs the assertion, runs one report over
+  `date × sessionDefaultChannelGroup × sessionSourceMedium`, and upserts both
+  tables. `pg_cron` runs it at 06:17 Santo Domingo; `trigger_ga4_sync(start,
+  end)` runs it on demand for a team member.
+- Secrets live on the function (`GA4_SERVICE_ACCOUNT`, `GA4_PROPERTY_ID`,
+  `GA4_SYNC_TOKEN`), and the same token is in Vault as `ga4_sync_token` so the
+  schedule can present it. Nothing is in this repository.
+
+The backfill pulled 2026-06-01 → 2026-11-17 in one call: **988 channel rows and
+2,091 source/medium rows, 151,453 sessions, 16 July to 17 November, 12 channels
+and 66 source/medium pairs.** The property itself starts on 16 July.
+
+### An upsert corrects what the source still reports and cannot remove what it stopped reporting
+
+The backfill covered the trial's whole window, so every row in it should have
+been rewritten. 101 rows were stored and Google returned 99. **Two rows
+survived**: `Cross-network` on 17 and 18 August, 18 sessions, which GA4 has
+since reattributed to another channel. An upsert has no opinion about rows the
+new data does not mention, so they sat there looking exactly like real history.
+
+They were found by `new_users is null` — the column did not exist when the trial
+loaded, and the API always fills it — and deleted. The general shape, which
+applies to any re-import over a window that already has rows: **compare the
+stored row count for the span against what the source returns for the same
+span.** Equal is the only safe answer; more means something old is still there.
+
+The same comparison also settles which source to believe. For 16 July – 18
+August the trial had stored **2,307** sessions and Google's own API says
+**2,190** — 5.3% high. Google is the source now.
+
+### Two things the first real pull showed
+
+- **Key events start on 9 November and are zero before it.** 1,762 of them in
+  November, none in August, September or October. Nothing is broken: that is
+  when `sign_up`, `first_deposit` and the rest were marked as key events in GA4.
+  The conversions column on the weekly screens is therefore empty for every
+  week before 9 November, and will stay that way.
+- **`forms.kycaid.com / referral` is self-referral, not acquisition.** 2,854
+  sessions in the week of 9 November — third largest source in the book — and it
+  is the KYC provider bouncing players back to the site mid-verification. It
+  inflates `Referral` by roughly the same amount. Nothing reads it correctly
+  today; a referral exclusion in the GA4 property is the fix, and it is a
+  Google-side step.
+
+Worth a look when somebody has time: `tiktok / paid` arrived the week of 9
+November with 675 sessions, 663 of them new users, and an engagement rate of
+**11.9%** against 71.8% for Direct and 85.2% for Organic Search. Paid traffic
+that does not engage is either the wrong audience or not human.
