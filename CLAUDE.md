@@ -886,8 +886,10 @@ Consequences:
 - There is no screen for this. `Settings.jsx` does not touch `team_members`, so
   the list is maintained in SQL.
 
-Members as of 2026-11-18: marcos and jonathan (admin), braulio (advisor, the VIP
-advisor the split note policies were written for), jose and javier (member,
-added as partners who needed to read the dashboard). Verified both ways for each
-new address: the hook returns `{}` rather than a 403, and a simulated session
-sees the full book.
+Members as of 2026-11-18: marcos, jonathan, jose and javier (admin) and braulio
+(advisor, the VIP advisor the split note policies were written for). The two
+partners were added as `member` and promoted to `admin` the same day, at
+Marcos's word — so four of the five can now edit or delete a player note they
+did not write, which is the only thing the role decides. Verified both ways for
+each new address: the hook returns `{}` rather than a 403, and a simulated
+session sees the full book with `is_team_admin()` true.
