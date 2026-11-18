@@ -834,8 +834,10 @@ to be. It is reconstructible the same way the stage was: the tier is trailing
 90-day wagering and `bets` carries a real `bet_date`. Nobody has asked for it
 yet, so it has not been built.
 
-**GA4 arrives by hand.** `src/lib/importers/ga4.js` takes an export. Automating
-it is blocked on Google-side steps that only Marcos can do.
+**GA4 arrives by hand**, and the reason is money, not Google — see "GA4 stopped
+on 18 August because a trial expired" below. Three ways to close it, all
+Marcos's: pay Supermetrics, give a GA4 Data API service account, or export from
+the GA4 interface and upload. The importer takes all three shapes.
 
 **`player_stage_moves` grows with the history.** It computes its window over
 the whole of `player_stage_history` before filtering, so the cost rises with
@@ -893,3 +895,128 @@ Marcos's word — so four of the five can now edit or delete a player note they
 did not write, which is the only thing the role decides. Verified both ways for
 each new address: the hook returns `{}` rather than a 403, and a simulated
 session sees the full book with `is_team_admin()` true.
+
+## GA4 stopped on 18 August because a trial expired
+
+This file used to say GA4 automation was "blocked on Google-side steps that only
+Marcos can do". That is half right and the half it misses is the half that
+matters. The Supermetrics connection for Google Analytics still reports
+`authentication_status: AUTHENTICATED`, and `data_source_discovery` and
+`accounts_discovery` both answer normally — so everything looks connected. Every
+actual `data_query` comes back
+
+```
+[TRIAL_EXPIRED] Your free trial on team Team appuesta has expired on 2026-08-31
+```
+
+and `ga4_channel_daily` holds 101 rows ending **2026-08-18**. Those two dates are
+one fact, not two. Nothing has been imported since, and nothing can be, through
+that connection.
+
+- **Three GA4 properties are on the account**, and they are not interchangeable:
+  Appuesta INT (469480048), **Appuesta RD (545967787)** and appuesta-cc6e2
+  (551885160). Appuesta RD is the one carrying the funnel — its key events are
+  `sign_up`, `kyc_verified`, `first_deposit`, `deposit_completed` and
+  `bonus_awarded`, which is registrations and FTDs *by channel*, the one thing
+  the backoffice cannot give. Appuesta INT has `Registro★` and a custom
+  "Appuesta Channel Grouping" instead. **Which property the 101 loaded rows came
+  from was never recorded**, so an export from a different one would splice two
+  properties into one table without complaining.
+- **GA4 can carry cost** — `advertiserAdCost`, `advertiserAdCostPerClick` — but
+  only when Google Ads is linked to the property. In Supermetrics, Google Ads
+  (`AW`) and Facebook Ads (`FA`) are both `NOT_AUTHENTICATED`, so no spend
+  arrives from there either. The only spend in this database is what somebody
+  typed: `weekly_spend` (one total per week, 9 weeks through 2026-11-02, with
+  2026-08-31 through 2026-09-21 missing) and now `channel_spend`.
+- `budgets` holds August only and every `actual_spend_dop` is 0; `channel_reports`
+  has a single row. Neither is maintained — don't build on them.
+
+## A traffic week is one week, and a short week is not a collapse
+
+The channel screen aggregates whatever the period bar selects, which answers
+"how much traffic in this range" and cannot answer "is it growing". Growth needs
+a fixed grain, so `ga4_weekly_channel`, `ga4_weekly_source_medium` and
+`ga4_weekly_totals` bucket with `date_trunc('week', date)::date` — the same
+Monday boundary as `weekly_spend.week_start`, `local_week()` and the front end's
+`weekStartOf()`. A traffic week is the same seven days as a KPI week.
+
+- **The previous week is joined on `week_start - 7`, never `lag()`.** `lag()`
+  compares against the previous week *present in the data*, so a missing week
+  would be silently treated as adjacent and the change would be wrong rather
+  than absent. Absent is the correct answer, and it renders as "—".
+- **`days_with_data` is counted across all channels**, not per channel. GA4
+  writes no row for a channel on a day it saw no sessions, so counting one
+  channel's days calls a quiet week a short one. Seven means complete.
+- **A partial week with a whole week's spend reads as a cost explosion.** The
+  week of 2026-08-17 holds 2 days of traffic (837 sessions) against the full
+  week's DOP 145,500, which is a cost per session of **173.84** beside 0.00 the
+  week before. Nothing is wrong with either number. The screen says so in a
+  visible banner, not a hover, because a hover is invisible to exactly the
+  person comparing figures.
+- Measured as `authenticated`, the query the page sends
+  (`select * from ga4_weekly_channel order by week_start desc, sessions desc`):
+  **15.7 ms**, with the RLS call hoisted to an InitPlan by the usual
+  `(select public.is_team_member())` wrapper. `anon` cannot read any of it —
+  it cannot even execute `is_team_member`.
+
+### source/medium, and why the spelling is load-bearing
+
+`ga4_source_medium_daily` is keyed on `(date, source_medium)`, because the export
+gives the pair as one string and splitting it is for filtering, not identity.
+GA4 writes `google / organic` in the interface and `google/organic` in some API
+exports: two spellings of one key is one week of traffic stored twice. The
+importer collapses both to `source / medium` with single spaces before the key
+is formed. `(direct) / (none)` is left exactly as GA4 writes it, because that is
+the row every untagged visit lands in and it gets compared against the interface.
+
+- `channel` is carried on the source/medium rows too — GA4 derives the channel
+  grouping from source/medium, so the pair maps to one channel and one table
+  answers both questions.
+- **No cost column at source/medium.** Spend is entered per channel, and
+  splitting a channel's spend across the pairs inside it would invent a split
+  nobody supplied.
+- **`channel_spend` is hand-entered and optional.** A channel with no figure
+  shows "—", never DOP 0, and the footer states what the channels add up to
+  against the week total already in `weekly_spend`, because a missing channel
+  must not read as a free one.
+- `new_users` was added to `ga4_channel_daily` as nullable: the 101 rows loaded
+  before it existed would otherwise claim nobody was new those weeks.
+
+### Two importer traps this uncovered, both in shared code
+
+`src/lib/importers/parseWorkbook.js` is used by every importer, so both of these
+were failing or would have failed for more than GA4.
+
+- **A GA4 interface export opens with `#` comment lines.** `detectDelimiter`
+  read only the *first* line, which in that file contains no delimiter at all,
+  so every candidate scored one column, the file was split on the default, and
+  every row came out as a single cell. The header then matched nothing,
+  `parseXlsxFile` settled on row 0 for want of anything better, and the import
+  failed claiming the file had no date column. The delimiter now comes from the
+  first line that is neither blank nor a comment.
+- **GA4's compact date `20261102` as a *number* was read as an Excel serial**,
+  which is the year 57373 — a date nothing rejects and no screen shows, so the
+  import would report success and write rows nobody could find. It survives a
+  CSV as text, but a spreadsheet stores it as a number. No real Excel serial is
+  eight digits (a date this century is around 46,000), so an eight-digit number
+  in a plausible date range is now read as the date it plainly is.
+
+Also: the header map now carries the Spanish labels beside the English, because
+a GA4 interface export is in the property's language. Google's own Spanish
+wording for the channel grouping varies ("grupo de canales predeterminado",
+"agrupación de canales predeterminados", "agrupación de canales predeterminada"),
+so several spellings are mapped rather than one guess — and when a header still
+misses, the refusal **names the headers it did find**, which turns a failed
+import into one message instead of a round of guessing.
+
+`scripts/verify-ga4-import.mjs` guards all of it in the build, 49 cases.
+Mutation-tested four ways: last-row-wins instead of summing breaks 8, the raw
+pair string as the key breaks 5, averaging the engagement rate instead of
+weighting it by sessions breaks 2, and taking the delimiter from the first line
+again makes the whole script throw.
+
+**Unverified, and it cannot be verified here:** no real GA4 export exists to test
+against — the ones in Drive are from 2025 and the live connection is dead. The
+importer was checked against two CSVs built to match the interface and
+Supermetrics shapes, not against a file Google produced. Marcos's first upload is
+the real test, and if a header misses, the error will name it.

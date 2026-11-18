@@ -15,6 +15,7 @@ import { useSortedRows } from "../lib/sortRows";
 import { SortHeader } from "../components/SortHeader";
 import WeeklyKpiGrid from "../components/WeeklyKpiGrid";
 import GoalTracker from "../components/GoalTracker";
+import TrafficWeek from "../components/TrafficWeek";
 
 const fmtPct = n => (n == null ? "—" : `${(n * 100).toFixed(1)}%`);
 
@@ -159,7 +160,7 @@ export default function Acquisition({ s, lang }) {
       <SectionHeading title={s.acqTitle} subtitle={s.acqSub} />
 
       <div style={{ display: "flex", marginBottom: 16, background: C.panel, border: `1px solid ${C.panelBorder}`, borderRadius: 9, padding: 3, gap: 2, width: "fit-content" }}>
-        {[["weekly", s.wk.viewWeekly], ["channels", s.social.channelsTitle]].map(([v, label]) => (
+        {[["weekly", s.wk.viewWeekly], ["traffic", s.traffic.tab], ["channels", s.social.channelsTitle]].map(([v, label]) => (
           <button key={v} onClick={() => setTab(v)} style={{ padding: "6px 18px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, background: tab === v ? C.accent : "transparent", color: tab === v ? "#fff" : C.inkDim }}>{label}</button>
         ))}
       </div>
@@ -193,6 +194,11 @@ export default function Acquisition({ s, lang }) {
           <p style={{ color: C.inkFaint, fontSize: 11.5, margin: "12px 0 0", maxWidth: 780, lineHeight: 1.6 }}>{s.wk.spendFallback}</p>
           <p style={{ color: C.inkFaint, fontSize: 11.5, margin: "8px 0 26px", maxWidth: 780, lineHeight: 1.6 }}>{s.wk.pendingSources}</p>
         </>
+      ) : tab === "traffic" ? (
+        // Self-contained: it fetches the three weekly views itself and owns the
+        // channel-spend edit, so the period bar and the GA4 period fetch above
+        // stay out of a screen whose grain is fixed at one week.
+        <TrafficWeek s={s} lang={lang} />
       ) : (
         <>
           <PeriodBar s={s} period={period} setPeriod={setPeriod} customStart={customStart}

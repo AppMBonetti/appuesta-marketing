@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/verify-bundle.mjs && node scripts/verify-sort.mjs && node scripts/verify-week-buckets.mjs && node scripts/verify-period-compare.mjs && node scripts/verify-player-id.mjs",
+    "build": "vite build && node scripts/verify-bundle.mjs && node scripts/verify-sort.mjs && node scripts/verify-week-buckets.mjs && node scripts/verify-period-compare.mjs && node scripts/verify-player-id.mjs && node scripts/verify-ga4-import.mjs",
     "lint": "oxlint",
     "preview": "vite preview"
   },

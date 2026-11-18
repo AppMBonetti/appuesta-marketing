@@ -117,7 +117,7 @@ const CARD_DEFS = [
   { source: "Payments Report", labelKey: "paymentsReportCard", noteKey: "paymentsReportNote" },
   { source: "Payments Export", labelKey: "paymentsExportCard", noteKey: "paymentsExportNote" },
   { source: "Altenar", labelKey: "altenarCard", noteKey: "altenarNote" },
-  { source: "GA4", labelKey: "ga4Card" },
+  { source: "GA4", labelKey: "ga4Card", noteKey: "ga4Note" },
   { source: "Instagram", labelKey: "instagramCard" },
 ];
 
@@ -371,20 +371,26 @@ export default function Imports({ s, lang }) {
 
         setPhase(source, "done", { rowCount: rows.length, unmatchedHeaders });
       } else if (source === "GA4") {
-        const { rows, unmatchedHeaders, coverage } = await parseGa4File(file);
-        if (rows.length === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
+        // One export, up to two destinations. A file built with both the channel
+        // grouping and source/medium fills both tables; a file with only one of
+        // them fills only that one, which is why each upsert is guarded rather
+        // than assumed.
+        const { channelRows, sourceMediumRows, unmatchedHeaders, coverage } = await parseGa4File(file);
+        const rowCount = channelRows.length + sourceMediumRows.length;
+        if (rowCount === 0) throw new Error(lang === "es" ? "No se encontraron filas válidas en el archivo." : "No valid rows found in the file.");
 
         setPhase(source, "importing");
-        await upsertInChunks(supabase, "ga4_channel_daily", rows, "date,channel");
+        if (channelRows.length) await upsertInChunks(supabase, "ga4_channel_daily", channelRows, "date,channel");
+        if (sourceMediumRows.length) await upsertInChunks(supabase, "ga4_source_medium_daily", sourceMediumRows, "date,source_medium");
 
         setPhase(source, "logging");
         const { error: logErr } = await supabase.from("data_imports").insert({
-          source, filename: file.name, row_count: rows.length, status: "success",
+          source, filename: file.name, row_count: rowCount, status: "success",
           period_start: coverage.start, period_end: coverage.end,
         });
         if (logErr) throw logErr;
 
-        setPhase(source, "done", { rowCount: rows.length, unmatchedHeaders });
+        setPhase(source, "done", { rowCount, unmatchedHeaders });
       } else {
         const { bets, unmatchedHeaders, unknownStatuses, unexpectedCurrencies, expectedCurrency, coverage } =
           await parseAltenarFile(file, sourceTz);

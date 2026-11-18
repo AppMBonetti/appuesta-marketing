@@ -215,6 +215,20 @@ export function toISODateOnly(rawValue) {
   if (value == null || value === "") return null;
   if (value instanceof Date) return isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
   if (typeof value === "number") {
+    // GA4's compact date (20261102) survives a CSV as text, but a spreadsheet
+    // stores it as a number, and read as an Excel serial that is the year
+    // 57373 — a date nothing rejects and no screen shows, so the import would
+    // report success and write a row nobody can find. No real Excel serial is
+    // eight digits: a date in this century is around 45,000, and 20,261,102
+    // days past 1899 is not a date anyone is reporting on.
+    const compactNumber = String(value).match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (compactNumber) {
+      const [, y, m, d] = compactNumber;
+      const year = Number(y), month = Number(m), day = Number(d);
+      if (year >= 1900 && year <= 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return `${y}-${m}-${d}`;
+      }
+    }
     const excelEpoch = Date.UTC(1899, 11, 30);
     return new Date(excelEpoch + value * 86400000).toISOString().slice(0, 10);
   }
@@ -294,10 +308,33 @@ function detectDelimiter(firstLine) {
   return best;
 }
 
+/**
+ * The line to work the delimiter out from.
+ *
+ * A GA4 interface export opens with a block of "#" comment lines naming the
+ * report and its date range, then a blank line, then the table. Reading the
+ * delimiter off the first line picks it from `# ----------------------------`,
+ * which contains no delimiter at all, so every candidate scores one column,
+ * the file is split on the default, and every row comes out as a single cell.
+ * The header then matches nothing, `parseXlsxFile` settles on row 0 for want of
+ * anything better, and the import fails claiming the file has no date column.
+ *
+ * So the delimiter comes from the first line that could be a header: not blank,
+ * not a comment. Falling back to the first line keeps every file that worked
+ * before working the same way.
+ */
+function delimiterSampleLine(clean) {
+  const lines = clean.split(/\r?\n/, 25);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith("#")) return line;
+  }
+  return lines[0] ?? "";
+}
+
 function rowsFromDelimitedText(text) {
   const clean = text.replace(/^﻿/, "");
-  const firstLine = clean.split(/\r?\n/, 1)[0] ?? "";
-  const cells = parseDelimitedText(clean, detectDelimiter(firstLine));
+  const cells = parseDelimitedText(clean, detectDelimiter(delimiterSampleLine(clean)));
   return cells.filter(r => r.some(c => String(c).trim() !== ""));
 }
 
