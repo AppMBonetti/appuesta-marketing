@@ -852,3 +852,42 @@ offers, but whether it is honoured from a settings file was never verified —
 settings load at startup, so no session can test its own copy. If a session
 starts and the mode dropdown already reads Auto, it works; if it still has to
 be set by hand, delete that line and record the answer here.
+
+## Who can get in, and the two gates they pass
+
+Access is a row in `team_members`, and that one row is checked twice by two
+different things. Finding this out took reading an auth hook, because the
+refusal a locked-out person sees does not come from the app at all.
+
+- **Before the link is sent**, Supabase runs `hook_signup_allowlist(event)` as a
+  before-user-created hook. It lowercases and trims the address and looks for it
+  in `team_members` *or* `affiliate_users`; anything else comes back as a 403
+  carrying the bilingual "Este correo no tiene acceso" message. `Login.jsx` maps
+  that status to `s.authNotApproved` — so the text on the login screen is the
+  hook's, not the app's, and grepping the front-end for it finds nothing.
+- **After they are in**, `is_team_member()` gates every policy, and
+  `AuthContext` reads `team_members` to decide between the dashboard and
+  `NotAuthorized`.
+
+Consequences:
+
+- **Adding somebody is one insert and nothing else.** No Supabase dashboard
+  step, no invite to send: the magic link starts working as soon as the row
+  exists, because the hook reads the table live.
+- **`role` does not control access.** `is_team_member()` only checks that the
+  row exists, whatever the role says. `admin` buys exactly one thing —
+  `is_team_admin()`, which lets somebody edit or delete a player note they did
+  not write. `advisor` and `member` are labels for people, not permissions.
+- **The hook compares lowercased, `is_team_member()` does not.** The hook does
+  `lower(t.email) = lower(...)`; the policy function does `email = auth.jwt() ->>
+  'email'`. A row stored with a capital letter would therefore let the link
+  through and then show NotAuthorized, which reads as a broken login rather than
+  a typo. **Store the address lowercase.**
+- There is no screen for this. `Settings.jsx` does not touch `team_members`, so
+  the list is maintained in SQL.
+
+Members as of 2026-11-18: marcos and jonathan (admin), braulio (advisor, the VIP
+advisor the split note policies were written for), jose and javier (member,
+added as partners who needed to read the dashboard). Verified both ways for each
+new address: the hook returns `{}` rather than a 403, and a simulated session
+sees the full book.
